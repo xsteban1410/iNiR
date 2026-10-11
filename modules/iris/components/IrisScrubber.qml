@@ -14,6 +14,8 @@ Item {
     property color trackColor: IrisStyle.fill
     signal seekRequested(real value)
     signal moved(real value)
+    // A double click on the knob itself, for a control that returns to where it started.
+    signal knobDoubleClicked()
     property bool knob: false
     property real stepSize: 0.05
     activeFocusOnTab: root.seekable
@@ -97,7 +99,14 @@ Item {
         hoverEnabled: true
         cursorShape: root.seekable ? Qt.PointingHandCursor : Qt.ArrowCursor
         function valueAt(px: real): real { return Math.max(0, Math.min(1, px / Math.max(1, width))) }
-        onPressed: mouse => { root.forceActiveFocus(); root.dragValue = valueAt(mouse.x); root.moved(root.dragValue) }
+        // Where the knob stood before each of the last two presses: a double click counts only on the knob as it was.
+        property real heldAt: 0
+        property real heldBefore: 0
+        onPressed: mouse => {
+            pointer.heldBefore = pointer.heldAt
+            pointer.heldAt = root.shownValue
+            root.forceActiveFocus(); root.dragValue = valueAt(mouse.x); root.moved(root.dragValue)
+        }
         onPositionChanged: mouse => { wheelIntent.track(mouse.x, mouse.y); if (pressed) { root.dragValue = valueAt(mouse.x); root.moved(root.dragValue) } }
         onReleased: {
             if (root.dragValue >= 0) root.seekRequested(root.dragValue)
@@ -106,6 +115,10 @@ Item {
         onCanceled: {
             if (root.dragValue >= 0) root.seekRequested(root.dragValue)
             root.dragValue = -1
+        }
+        onDoubleClicked: mouse => {
+            if (root.knob && Math.abs(mouse.x - pointer.heldBefore * width) <= knobFace.width)
+                root.knobDoubleClicked()
         }
         preventStealing: true
         property real wheelAccumulator: 0

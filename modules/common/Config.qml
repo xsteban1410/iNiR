@@ -4246,6 +4246,10 @@ Singleton {
                     property int clipboardResults: 8
                     property bool showHints: true
                 }
+                property JsonObject audio: JsonObject {
+                    property bool enable: true
+                    property string host: "overlay" // "overlay" over the desktop, or "window"
+                }
                 property JsonObject tray: JsonObject {
                     property bool hidePassive: false
                     property bool labels: true

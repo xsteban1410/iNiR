@@ -1,0 +1,15 @@
+module qs.modules.iris.audio
+IrisAudio 1.0 IrisAudio.qml
+IrisAudioOverlay 1.0 IrisAudioOverlay.qml
+IrisAudioWindow 1.0 IrisAudioWindow.qml
+IrisAudioRow 1.0 IrisAudioRow.qml
+IrisAudioEffectPage 1.0 IrisAudioEffectPage.qml
+IrisAudioEqualizerPage 1.0 IrisAudioEqualizerPage.qml
+IrisAudioPresetsPage 1.0 IrisAudioPresetsPage.qml
+IrisAudioAddPage 1.0 IrisAudioAddPage.qml
+singleton IrisAudioModules 1.0 IrisAudioModules.qml
+IrisAudioCurve 1.0 IrisAudioCurve.qml
+IrisAudioScene 1.0 IrisAudioScene.qml
+IrisAudioEqGraph 1.0 IrisAudioEqGraph.qml
+IrisAudioMicPage 1.0 IrisAudioMicPage.qml
+IrisAudioAutoload 1.0 IrisAudioAutoload.qml

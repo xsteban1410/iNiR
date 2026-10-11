@@ -636,6 +636,26 @@ Ctrl+Alt+F { spawn "inir" "equalizer" "toggle"; }
 
 ---
 
+### audioEngine
+
+Open the iRiS Audio Engine: EasyEffects' output chain with six core effects (Equalizer, Filter, Bass Enhancer, Exciter, Autogain, Limiter) in front of the chain you already had, built-in sounds and your own presets. iRiS only, while **Settings › Sound & Feedback › Audio Engine** is on; it opens over the desktop or as a window, as that page chooses. Opening it never changes the chain: the core joins it the first time you turn an effect on or move one.
+
+| Function | Description |
+|----------|-------------|
+| `toggle` | Open/close the Audio Engine (brings its window forward when it is behind) |
+| `open` | Show the Audio Engine |
+| `close` | Hide the Audio Engine |
+| `page <name>` | Open it on one page: `presets`, `equalizer`, `filter`, `bass_enhancer`, `exciter`, `autogain`, `limiter`, `microphone` or `add` |
+| `preset <name>` | Play a sound by name, built in (`Default`, `Voice`, `Rock`…) or one of yours |
+| `bypass` | Hear everything without effects, or bring them back (EasyEffects' global bypass) |
+
+```kdl
+Mod+U { spawn "inir" "audioEngine" "toggle"; }
+Mod+Shift+U { spawn "inir" "audioEngine" "bypass"; }
+```
+
+---
+
 ### osk
 
 On-screen keyboard.

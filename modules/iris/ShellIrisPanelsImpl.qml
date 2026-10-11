@@ -2,8 +2,10 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs
 import qs.services
+import qs.services.deferred
 import qs.modules.common
 import qs.modules.iris.notificationPopup
 import qs.modules.iris.onScreenDisplay
@@ -12,6 +14,7 @@ import qs.modules.iris.polkit
 import qs.modules.iris.style
 import qs.modules.iris.pieces
 import qs.modules.iris.settings
+import qs.modules.iris.audio
 import qs.modules.iris.studio
 import qs.modules.iris.lock
 import qs.modules.iris.sidebar
@@ -141,6 +144,56 @@ Item {
         open: root.settingsWindowed && GlobalStates.settingsOverlayOpen
         closeGraceMs: 0
         component: IrisSettingsWindow {}
+    }
+
+    readonly property bool audioWindowed: (Config.options?.iris?.audio?.host ?? "overlay") === "window"
+    OnDemandPanelLoader {
+        identifier: "irisAudio"
+        requireEnabledPanel: false
+        extraCondition: GlobalStates.audioEngineAvailable
+        open: !root.audioWindowed && GlobalStates.audioEngineOpen
+        closeGraceMs: IrisStyle.settleDuration + 120
+        component: IrisAudioOverlay {}
+    }
+    OnDemandPanelLoader {
+        identifier: "irisAudioWindow"
+        requireEnabledPanel: false
+        extraCondition: GlobalStates.audioEngineAvailable
+        open: root.audioWindowed && GlobalStates.audioEngineOpen
+        closeGraceMs: 0
+        component: IrisAudioWindow {}
+    }
+    // Outputs that remember a sound need a watcher only while some do.
+    LazyLoader {
+        active: GlobalStates.audioEngineAvailable && Object.keys(AudioEngine.savedDevices).length > 0
+        component: IrisAudioAutoload {}
+    }
+    IpcHandler {
+        target: "audioEngine"
+        function toggle(): void { GlobalStates.toggleAudioEngine() }
+        function open(): void { GlobalStates.openAudioEngine() }
+        function close(): void { GlobalStates.audioEngineOpen = false }
+        // A sound by name, built in or your own: `inir audioEngine preset Rock`.
+        function preset(name: string): string {
+            if (!GlobalStates.audioEngineAvailable) return "audio engine off"
+            AudioEngine.hold()
+            AudioEngine.applyPreset(name)
+            return "ok"
+        }
+        // Everything without effects, or back: EasyEffects' global bypass.
+        function bypass(): string {
+            if (!GlobalStates.audioEngineAvailable) return "audio engine off"
+            AudioEngine.hold()
+            AudioEngine.toggleBypass()
+            return "ok"
+        }
+        function page(name: string): string {
+            if (!["presets", "equalizer", "filter", "bass_enhancer", "exciter", "autogain", "limiter", "microphone", "add"].includes(name))
+                return "unknown page"
+            AudioEngine.lastSection = name
+            GlobalStates.openAudioEngine()
+            return "ok"
+        }
     }
 
     LazyLoader {

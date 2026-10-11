@@ -7,6 +7,7 @@ import Quickshell
 import Quickshell.Bluetooth
 import qs
 import qs.services
+import qs.services.deferred
 import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.models.quickToggles
@@ -37,6 +38,12 @@ Item {
     // a small tile toggles on click and had no way to its networks or devices.
     function togglePicker(list: string): void {
         if (list.length === 0 || root.editing) return
+        // Effects has a Place of its own rather than a list: the Audio Engine takes over from the Control Center.
+        if (list === "audioEngine") {
+            GlobalStates.controlPanelOpen = false
+            GlobalStates.openAudioEngine()
+            return
+        }
         root.picker = root.picker === list ? "" : list
     }
     property string hint: ""
@@ -376,6 +383,9 @@ Item {
             : String(ctl.model?.icon ?? IrisControlOptions.glyphOf(ctl.moduleId))
         readonly property string detail: ctl.moduleId === "devices" ? Audio.friendlyDeviceName(Audio.defaultSink)
             : ctl.moduleId === "record" ? (ctl.recording ? Translation.tr("Recording") : Translation.tr("With sound"))
+            // Effects names the Audio Engine's sound while EasyEffects runs.
+            : ctl.moduleId === "easyEffects" && GlobalStates.audioEngineAvailable && ctl.model?.toggled && AudioEngine.shownActive.length > 0
+                ? Translation.tr(AudioEngine.shownActive)
             : String(ctl.model?.statusText ?? "")
         readonly property bool lit: ctl.moduleId === "record" ? ctl.recording
             : ctl.moduleId === "devices" ? root.picker === "devices"
@@ -388,6 +398,7 @@ Item {
         // What a right click (or the chevron of a wide tile) unfolds under the grid: the list of that thing, or
         // the page of its category.
         readonly property string expands: ctl.moduleId === "network" ? "network"
+            : ctl.moduleId === "easyEffects" && GlobalStates.audioEngineAvailable ? "audioEngine"
             : ctl.moduleId === "bluetooth" ? "bluetooth"
             : IrisControlOptions.categoryOf(ctl.moduleId) === "display" ? "display"
             : IrisControlOptions.categoryOf(ctl.moduleId) === "system" ? "system"

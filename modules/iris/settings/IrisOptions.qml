@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import qs
 import qs.modules.common
 import qs.services
 import qs.modules.iris.style
@@ -422,7 +423,7 @@ QtObject {
         { target: "island", group: "Desktop page", label: "Your modules", description: "Modules written with the iRiS SDK sit in the page's Modules block. Make one with inir customWidgets create <name>; it shows up here.", path: "iris.bar.rightModules", kind: "pieces", fallback: [], choicesFrom: "irisModules", showIf: () => (CustomWidgets.widgets ?? []).some(widget => String(widget.irisQmlPath ?? "").length > 0), keywords: ["sdk", "custom", "module", "plugin", "extension", "widget"] },
         { target: "island", group: "Desktop page", label: "Block style", description: "Plain rows sit on the Island's black like the rest of the page; Grouped puts the forecast and vitals strips on quiet plates.", path: "iris.bar.blockStyle", kind: "choice", fallback: "plain", choices: [{label:"Plain",value:"plain",glyph:"view_agenda"},{label:"Grouped",value:"grouped",glyph:"splitscreen"}] },
         { target: "island", group: "Pages", label: "Page width", description: "How wide the open Island is. The activity page keeps its proportion.", path: "iris.bar.pageWidth", kind: "range", fallback: 440, min: 360, max: 600, step: 10, unit: " px" },
-        { target: "island", group: "Pages", label: "Navigation", description: "What the open Island's navigation row offers, in the order you switch them on. Pages come first; scroll over the row, or swipe sideways anywhere on the open Island, to move between them.", path: "iris.bar.navItems", kind: "pieces", fallback: ["media", "activity", "desktop", "tray", "tools", "focus", "today", "controls", "settings"], choices: [{label:"Now playing",value:"media"},{label:"Live activities",value:"activity"},{label:"Desktop",value:"desktop"},{label:"Tray",value:"tray"},{label:"Timers",value:"tools"},{label:"Focus panel",value:"focus"},{label:"Today panel",value:"today"},{label:"Quick controls",value:"controls"},{label:"Settings",value:"settings"}] },
+        { target: "island", group: "Pages", label: "Navigation", description: "What the open Island's navigation row offers, in the order you switch them on. Pages come first; scroll over the row, or swipe sideways anywhere on the open Island, to move between them.", path: "iris.bar.navItems", kind: "pieces", fallback: ["media", "activity", "desktop", "tray", "tools", "focus", "today", "controls", "settings"], choices: [{label:"Now playing",value:"media"},{label:"Live activities",value:"activity"},{label:"Desktop",value:"desktop"},{label:"Tray",value:"tray"},{label:"Timers",value:"tools"},{label:"Sound",value:"sound"},{label:"Focus panel",value:"focus"},{label:"Today panel",value:"today"},{label:"Quick controls",value:"controls"},{label:"Settings",value:"settings"}] },
         { target: "island", group: "Pages", label: "Page buttons", description: "What holds the navigation row. Auto follows Appearance › Button rows; a plate follows the bubbles' shape, with the buttons inside it concentric.", path: "iris.bar.navFrame", kind: "choice", fallback: "auto", choices: [{label:"Auto",value:"auto",glyph:"auto_awesome"},{label:"None",value:"none",glyph:"block"},{label:"Veil",value:"veil",glyph:"gradient"},{label:"Glass",value:"glass",glyph:"blur_on"},{label:"Solid",value:"solid",glyph:"square"}], keywords: ["navigation", "buttons", "tabs", "frame", "plate", "capsule", "glass", "blur", "background", "marco"] },
         { target: "island", group: "Player page", label: "Blocks", description: "What the player page shows, in the order you switch them on.", path: "iris.bar.mediaBlocks", kind: "pieces", fallback: ["player", "timeline", "transport", "players", "levels"], choices: [{label:"Now playing",value:"player"},{label:"Timeline",value:"timeline"},{label:"Controls",value:"transport"},{label:"Other players",value:"players"},{label:"App volume",value:"levels"}] },
         { target: "pieces", group: "Size", label: "Bubble size", description: "Bubbles off the Island, as a share of the Island's height.", path: "iris.bubbles.scale", kind: "range", fallback: 100, min: 60, max: 140, step: 5, unit: " %" },
@@ -823,6 +824,9 @@ QtObject {
         { section: "sound", group: "Volume", label: "Ear protection", description: "Holds back sudden jumps and keeps the volume under the limit. Shared with Material and Waffle.", path: "audio.protection.enable", kind: "switch", fallback: true, keywords: ["earbang", "volume", "limit", "loud", "hearing", "safety"] },
         { section: "sound", group: "Volume", label: "Largest jump", description: "The most one change can raise the volume.", path: "audio.protection.maxAllowedIncrease", visibleWhen: "audio.protection.enable", kind: "range", fallback: 10, min: 2, max: 50, step: 2, unit: " %", keywords: ["earbang", "volume", "step"] },
         { section: "sound", group: "Volume", label: "Volume limit", description: "Above 100 % amplifies the sound and can distort it; 153 % is as far as the system mixer goes.", path: "audio.protection.maxAllowed", visibleWhen: "audio.protection.enable", kind: "range", fallback: 100, min: 50, max: 154, step: 2, unit: " %", keywords: ["earbang", "volume", "limit", "boost", "amplify", "over 100", "150"] },
+        { section: "sound", group: "Audio Engine", label: "Audio Engine", description: "Equalizer, filter, bass, exciter, loudness and limiter on EasyEffects, with presets you can save. The Control Center's Effects control opens it on right click.", path: "iris.audio.enable", kind: "switch", fallback: true, keywords: ["easyeffects", "equalizer", "eq", "bass", "effects", "preset", "limiter", "sound"] },
+        { section: "sound", group: "Audio Engine", label: "Opens as", description: "Over the desktop it sits above everything; a window sits with your apps, and Niri sizes and moves it.", path: "iris.audio.host", visibleWhen: "iris.audio.enable", kind: "choice", fallback: "overlay", choices: [{ label: "Over the desktop", value: "overlay", glyph: "layers" }, { label: "Window", value: "window", glyph: "web_asset" }], keywords: ["audio engine", "window", "overlay", "floating"] },
+        { section: "sound", group: "Audio Engine", label: "Open the Audio Engine", kind: "action", button: "Open", run: () => { GlobalStates.settingsOverlayOpen = false; GlobalStates.openAudioEngine() }, showIf: () => Config.options?.iris?.audio?.enable ?? true, keywords: ["easyeffects", "equalizer", "presets"] },
     ].concat(...["left", "right"].map(side => [
         { section: "sidebars", group: side === "left" ? "Focus · left" : "Today · right", label: "Enable panel", path: "iris.sidebars." + side + ".enable", kind: "switch", fallback:true },
         { section: "sidebars", group: side === "left" ? "Focus · left" : "Today · right", label: "Width", path: "iris.sidebars." + side + ".width", kind: "range", fallback:380,min:300,max:600,step:10,unit:" px" },
@@ -1141,6 +1145,7 @@ QtObject {
         return root.sections.find(section => section.id === id) ?? root.sections[0]
     }
     readonly property var groupGlyphs: ({
+        "Audio Engine": "graphic_eq",
         "Shell family": "swap_horiz", "Notch": "vertical_align_top",
         "Wallpaper shuffle": "shuffle",
         "Behind windows": "blur_on", "Japanese lookup": "translate", "Parallax": "3d_rotation", "Scaling": "aspect_ratio", "Recording": "screen_record", "Snip": "screenshot_region",
@@ -1170,6 +1175,7 @@ QtObject {
         "Room for iRiS": "fit_screen", "Keyboard": "keyboard", "Mouse": "mouse", "Trackpad": "touch_app", "Pointer": "arrow_selector_tool", "Screen": "monitor"
     })
     readonly property var groupTints: ({
+        get "Audio Engine"() { return IrisStyle.identity.pink },
         get "Shell family"() { return IrisStyle.identity.purple },
         get "Notch"() { return IrisStyle.identity.blue },
         get "About iNiR"() { return IrisStyle.identity.lavender },

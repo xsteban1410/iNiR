@@ -165,6 +165,28 @@ Singleton {
         }
     }
 
+    // iRiS Audio Engine: a Place like Settings, over the desktop or as a window (iris.audio.host).
+    property bool audioEngineOpen: false
+    property bool audioEngineWindowBehind: false
+    property int audioEngineRaiseRequest: 0
+    readonly property bool audioEngineAvailable: Config.options?.panelFamily === "iris"
+        && (Config.options?.iris?.audio?.enable ?? true)
+
+    function openAudioEngine(): void {
+        if (!root.audioEngineAvailable) return
+        if (root.audioEngineOpen) root.audioEngineRaiseRequest++
+        root.audioEngineOpen = true
+    }
+
+    function toggleAudioEngine(): void {
+        if (!root.audioEngineAvailable) {
+            root.audioEngineOpen = false
+            return
+        }
+        if (root.audioEngineOpen && root.audioEngineWindowBehind) root.audioEngineRaiseRequest++
+        else root.audioEngineOpen = !root.audioEngineOpen
+    }
+
     function setSettingsNativeDialogVisible(dialogKey: string, visible: bool): void {
         const key = String(dialogKey ?? "").trim()
         if (!key) return

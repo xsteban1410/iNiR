@@ -66,6 +66,8 @@ binds {
     // Optional EasyEffects equalizer. Fresh installs reserve this chord so it
     // is ready if/when the module is enabled in Settings → Modules → Optional.
     Ctrl+Alt+F { spawn "inir" "equalizer" "toggle"; }
+    // iRiS Audio Engine (EasyEffects): equalizer, effects and presets.
+    Mod+U { spawn "inir" "audioEngine" "toggle"; }
 
     // ═══════════════════════════════════════════════════════════════════════
     // App launchers

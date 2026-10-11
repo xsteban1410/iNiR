@@ -2706,6 +2706,10 @@
             "clipboardResults": 8,
             "showHints": true
         },
+        "audio": {
+            "enable": true,
+            "host": "overlay"
+        },
         "tray": {
             "hidePassive": false,
             "labels": true,

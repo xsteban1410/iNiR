@@ -2,14 +2,15 @@
 # Auto-generated from QML IpcHandler declarations + docs/IPC.md metadata.
 # Do not edit manually.
 # Regenerate: python3 scripts/lib/generate-ipc-registry.py
-# IPC.md hash: 0d6c3f7cd89fa87b
-# Targets: 74
+# IPC.md hash: 8289d1d927c150e2
+# Targets: 75
 
 declare -gA IPC_TARGET_DESC=(
   [ai]="Shared multi-provider AI service. It supports Gemini, OpenAI-compatible chat and Responses APIs, Mistral and Anthropic; live provider catalogs are normalized into capability-aware model records. Catalog visibility is separate from execution readiness, so public model lists remain browseable without pretending an API key exists. OpenCode Zen and Go resolve their current model lists and per-model API routes dynamically. Normal shell tools use typed actions and approval cards, while arbitrary commands are isolated in Advanced mode."
   [altSwitcher]="Alt+Tab window switcher. Works across workspaces, unlike some other implementations we won't name."
   [appCatalog]="App catalog service. Browse, search, and install curated applications."
   [audio]="Volume and mute control."
+  [audioEngine]="Open the iRiS Audio Engine: EasyEffects' output chain with six core effects (Equalizer, Filter, Bass Enhancer, Exciter, Autogain, Limiter) in front of the chain you already had, built-in sounds and your own presets. iRiS only, while **Settings › Sound & Feedback › Audio Engine** is on; it opens over the desktop or as a window, as that page chooses. Opening it never changes the chain: the core joins it the first time you turn an effect on or move one."
   [autostart]="Niri login autostart manager. Reads and writes the managed section of \`~/.config/niri/config.d/50-startup.kdl\` (delimited by \`// >>> inir-managed-autostart >>>\` / \`// <<< inir-managed-autostart <<<\`). Base iNiR lines and any hand-written \`spawn-at-startup\` lines outside the markers are preserved verbatim; toggling an entry comments the line out instead of deleting it. Safe no-op on non-Niri compositors (the page shows a guard instead)."
   [background]="Desktop background and widget controls."
   [bar]="Top bar visibility."
@@ -87,6 +88,7 @@ declare -gA IPC_TARGET_FAMILY=(
   [altSwitcher]="shared"
   [appCatalog]="shared"
   [audio]="shared"
+  [audioEngine]="shared"
   [autostart]="waffle"
   [background]="shared"
   [bar]="shared"
@@ -164,6 +166,7 @@ declare -gA IPC_TARGET_FUNCTIONS=(
   [altSwitcher]="opens open close toggle next previous"
   [appCatalog]="refresh search install list"
   [audio]="volumeUp volumeDown mute playEvent micMute"
+  [audioEngine]="toggle open close preset bypass page"
   [autostart]="status addCommand addApp removeLast reload"
   [background]="widgetDesign widgetMaterial widgetSearch toggleEditMode toggleWidgetManager setEditMode editState applyOrganicEdgePreset applyOrganicEdgeComposition applyOrganicEdgeMaterial applyOrganicEdgeResponse organicEdgeState setOrganicEdgeEnabled quickControlsPage quickControlsGeometry widgetSnapshot legibilityState desktopItemsState focusWidget promoteWidget resetLayerOrder setWidgetEnabled clockDebugState clockDebugSetMode clockDebugSetRegion clockDebugSetLayout clockDebugRestore"
   [bar]="mediaWidth toggle close open"
@@ -259,6 +262,12 @@ declare -gA IPC_FUNCTION_DESC=(
   ["audio:mute"]="Toggle speaker mute"
   ["audio:playEvent"]="Play a shell event sound (e.g. \`notification\`, \`batteryLow\`, \`timerDone\`), honoring the user's per-event override"
   ["audio:micMute"]="Toggle microphone mute"
+  ["audioEngine:toggle"]="Open/close the Audio Engine (brings its window forward when it is behind)"
+  ["audioEngine:open"]="Show the Audio Engine"
+  ["audioEngine:close"]="Hide the Audio Engine"
+  ["audioEngine:preset"]="Play a sound by name, built in (\`Default\`, \`Voice\`, \`Rock\`…) or one of yours"
+  ["audioEngine:bypass"]="Hear everything without effects, or bring them back (EasyEffects' global bypass)"
+  ["audioEngine:page"]="Open it on one page: \`presets\`, \`equalizer\`, \`filter\`, \`bass_enhancer\`, \`exciter\`, \`autogain\`, \`limiter\`, \`microphone\` or \`add\`"
   ["autostart:status"]="Return \`niri\\"
   ["autostart:addCommand"]="Append a managed \`spawn-sh-at-startup\` shell line"
   ["autostart:addApp"]="Append a managed \`gtk-launch <desktopId>\` entry"
@@ -682,6 +691,8 @@ declare -gA IPC_FUNCTION_ARGS=(
   ["appCatalog:search"]="<query>"
   ["appCatalog:install"]="<id>"
   ["audio:playEvent"]="<event>"
+  ["audioEngine:preset"]="<name>"
+  ["audioEngine:page"]="<name>"
   ["autostart:addCommand"]="<cmd>"
   ["autostart:addApp"]="<desktopId>"
   ["background:widgetDesign"]="<name>"
@@ -841,6 +852,8 @@ declare -gA IPC_FUNCTION_ARGS=(
 declare -gA IPC_FUNCTION_VALUES=(
   ["altSwitcher:opens"]="inir niri status"
   ["audio:playEvent"]="batteryLow timerDone"
+  ["audioEngine:preset"]="Default Voice Rock"
+  ["audioEngine:page"]="presets equalizer filter bass_enhancer exciter autogain limiter microphone add"
   ["autostart:addCommand"]="spawn-sh-at-startup"
   ["background:widgetDesign"]="iris material individual instrument readout undo status"
   ["background:widgetMaterial"]="status match"
@@ -922,6 +935,8 @@ declare -gA IPC_FUNCTION_VALUES=(
 declare -gA IPC_TARGET_EXAMPLE=(
   [altSwitcher]='Alt+Tab { spawn "inir" "altSwitcher" "next"; }
 Alt+Shift+Tab { spawn "inir" "altSwitcher" "previous"; }'
+  [audioEngine]='Mod+U { spawn "inir" "audioEngine" "toggle"; }
+Mod+Shift+U { spawn "inir" "audioEngine" "bypass"; }'
   [background]='Super+W { spawn "inir" "background" "toggleEditMode"; }'
   [cheatsheet]='Super+Slash { spawn "inir" "cheatsheet" "toggle"; }'
   [clipboard]='Super+V repeat=false { spawn "inir" "clipboard" "toggle"; }'
@@ -959,14 +974,15 @@ Ctrl+Alt+A { spawn "inir" "wallpaperSelector" "openLauncher" "animated"; }'
   [ytmusic]='Mod+M+Space { spawn "inir" "ytmusic" "playPause"; }'
 )
 
-IPC_ALL_TARGETS=(ai altSwitcher appCatalog audio autostart background bar battery bluetooth brightness cheatsheet clipboard cliphistService closeConfirm colorMode connections controlPanel coverflowSelector customWidgets dashboard dev equalizer gamemode globalActions globalStyle hub iris keyboard lock loginScreen mascot mascotMood mediaControls memory minimize mpris network niriAnimations notifications orbit osd osdVolume osk overlay overview packageSearch panelFamily pill recordingOsd region search session settings settingsNav shellLayout shellUpdate sidebarLeft sidebarRight taskview tiling voiceSearch vpn wactionCenter waffleAltSwitcher wallpaperLauncher wallpaperSelector wbar widgetStacks widgetpower wnotificationCenter workspaceStrip wwidgets ytmusic zoom)
-IPC_SHARED_TARGETS=(ai altSwitcher appCatalog audio background bar battery bluetooth brightness cheatsheet clipboard cliphistService closeConfirm colorMode connections controlPanel coverflowSelector dashboard dev gamemode globalActions globalStyle hub iris keyboard lock loginScreen mascot mascotMood mediaControls memory minimize mpris network niriAnimations notifications orbit osd osdVolume osk overlay overview packageSearch panelFamily pill region session settings settingsNav shellLayout shellUpdate sidebarLeft sidebarRight taskview tiling voiceSearch vpn wallpaperLauncher wallpaperSelector workspaceStrip ytmusic zoom)
+IPC_ALL_TARGETS=(ai altSwitcher appCatalog audio audioEngine autostart background bar battery bluetooth brightness cheatsheet clipboard cliphistService closeConfirm colorMode connections controlPanel coverflowSelector customWidgets dashboard dev equalizer gamemode globalActions globalStyle hub iris keyboard lock loginScreen mascot mascotMood mediaControls memory minimize mpris network niriAnimations notifications orbit osd osdVolume osk overlay overview packageSearch panelFamily pill recordingOsd region search session settings settingsNav shellLayout shellUpdate sidebarLeft sidebarRight taskview tiling voiceSearch vpn wactionCenter waffleAltSwitcher wallpaperLauncher wallpaperSelector wbar widgetStacks widgetpower wnotificationCenter workspaceStrip wwidgets ytmusic zoom)
+IPC_SHARED_TARGETS=(ai altSwitcher appCatalog audio audioEngine background bar battery bluetooth brightness cheatsheet clipboard cliphistService closeConfirm colorMode connections controlPanel coverflowSelector dashboard dev gamemode globalActions globalStyle hub iris keyboard lock loginScreen mascot mascotMood mediaControls memory minimize mpris network niriAnimations notifications orbit osd osdVolume osk overlay overview packageSearch panelFamily pill region session settings settingsNav shellLayout shellUpdate sidebarLeft sidebarRight taskview tiling voiceSearch vpn wallpaperLauncher wallpaperSelector workspaceStrip ytmusic zoom)
 IPC_II_TARGETS=(equalizer)
 IPC_WAFFLE_TARGETS=(autostart customWidgets recordingOsd search wactionCenter waffleAltSwitcher wbar widgetStacks widgetpower wnotificationCenter wwidgets)
 
 declare -gA IPC_KEBAB_ALIASES=(
   [alt-switcher]=altSwitcher
   [app-catalog]=appCatalog
+  [audio-engine]=audioEngine
   [cliphist-service]=cliphistService
   [close-confirm]=closeConfirm
   [color-mode]=colorMode
