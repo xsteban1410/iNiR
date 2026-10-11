@@ -6,7 +6,9 @@ presets touch only the enabled core effects; Default turns the core off; band
 counts; added effects pile up and leave one by one; headroom follows the
 highest band; a changed preset reads as modified and reverts; global bypass;
 sounds remembered per output; saving, loading, renaming and deleting presets;
-exporting in both formats and importing them back; the microphone chain.
+exporting in both formats and importing them back; the microphone chain; the sound iNiR
+starts with; cheap polls; apps left out of a chain; sounds per app; file-name collisions;
+malformed imports and failing quiet commands never ending the helper.
 """
 
 import json
@@ -37,6 +39,7 @@ class FakeEasyEffects:
         self.pipes = {"output": {"dbs": {}, "chain": []}, "input": {"dbs": {}, "chain": []}}
         self.bypass = False
         self.loads = 0
+        self.blocklists = {"output": None, "input": None}
 
     def dbs(self, pipe: str = "output") -> dict:
         return self.pipes[pipe]["dbs"]
@@ -63,6 +66,7 @@ class FakeEasyEffects:
     def load(self, pipe: str, name: str) -> None:
         data = json.loads((self.data / pipe / f"{name}.json").read_text())[pipe]
         self.loads += 1
+        self.blocklists[pipe] = data.get("blocklist")
         self.pipes[pipe] = {"dbs": {}, "chain": []}
         for plugin_id in data["plugins_order"]:
             kind = plugin_id.split("#")[0]
@@ -370,6 +374,84 @@ def main() -> int:
             assert state["mic"]["adopted"] and not core(state["mic"], "autotune")["enabled"]
             assert core(state["mic"], "gate")["enabled"], "the effects already on stay on"
             assert fake.dbs("input")["deesser#0"]["threshold"] == -30.0
+        finally:
+            helper.close()
+
+        # The sound iNiR starts with: the preset played and effects back on; Settings reads the presets from the state.
+        helper = Helper(root, fake)
+        try:
+            fake.bypass = True
+            state = helper.state(op="boot", name="Rock")
+            assert state["active"] == "Rock" and fake.bypass is False and state["bypass"] is False
+            assert helper.call(op="boot", name="Nope")[0]["message"] == "preset_not_found"
+            helper.state(op="save", name="Startup mine")
+            saved = json.loads((root / "state" / "audio-engine.json").read_text())
+            assert "Startup mine" in saved["presets"], saved.get("presets")
+
+            # With a microphone sound named, iNiR starts with that too.
+            state = helper.state(op="boot", name="Default", mic="Calls")
+            assert state["mic"]["active"] == "Calls"
+
+            # A poll with nothing changed is answered without reading the chain again; a change brings the state.
+            helper.state(op="refresh")
+            helper.proc.stdin.write(json.dumps({"op": "poll"}) + "\n")
+            helper.proc.stdin.flush()
+            assert json.loads(helper.proc.stdout.readline())["type"] == "poll"
+            fake.bypass = True
+            assert helper.state(op="poll")["bypass"] is True
+            helper.state(op="bypass", on=False)
+            assert fake.bypass is False
+
+            # The bypass byte arrives with no line break: replies after it stay in step.
+            fake.bypass = True
+            state = helper.state(op="refresh")
+            assert state["bypass"] is True and state["active"] == "Default"
+            fake.bypass = False
+
+            # Apps left out of the chain reach EasyEffects through the preset it loads; taking one back reloads it.
+            loads = fake.loads
+            state = helper.state(op="exclude", app="spotify", on=True)
+            assert state["excluded"]["output"] == ["spotify"] and fake.blocklists["output"] == ["spotify"]
+            assert fake.loads == loads + 1, "the chain is reloaded once"
+            helper.state(op="exclude", app="spotify", on=True)
+            assert fake.loads == loads + 1, "excluding twice changes nothing"
+            state = helper.state(op="exclude", app="spotify", on=False)
+            assert state["excluded"]["output"] == [] and fake.blocklists["output"] == []
+            state = helper.state(op="exclude", app="discord", on=True, pipe="input")
+            assert state["excluded"]["input"] == ["discord"] and fake.blocklists["input"] == ["discord"]
+            assert helper.call(op="exclude", app="", on=True)[0]["message"] == "invalid_app"
+
+            # A sound per app follows its preset's renames and goes with it.
+            state = helper.state(op="rememberApp", app="discord", preset="Startup mine")
+            assert state["apps"] == {"discord": "Startup mine"}
+            state = helper.state(op="rename", **{"from": "Startup mine", "to": "Calls mine"})
+            assert state["apps"] == {"discord": "Calls mine"}
+            state = helper.state(op="delete", name="Calls mine")
+            assert state["apps"] == {}
+            state = helper.state(op="rememberApp", app="discord", preset="Voice")
+            state = helper.state(op="forgetApp", app="discord")
+            assert state["apps"] == {}
+
+            # Two names that share a file name never write over each other.
+            helper.state(op="save", name="Rock?")
+            helper.state(op="save", name="Rock_ 1")
+            state = helper.state(op="rename", **{"from": "Rock_ 1", "to": "Rock_"})
+            assert {"Rock?", "Rock_"} <= set(state["presets"]), state["presets"]
+
+            # A file that is ours in name only is refused, and the helper keeps answering.
+            bad = root / "bad.json"
+            bad.write_text(json.dumps({"name": "Bad", "core": ["not", "a", "dict"], "extras": "nope"}))
+            assert helper.call(op="import", path=str(bad))[0]["message"] == "unknown_format"
+            odd = root / "odd.json"
+            odd.write_text(json.dumps({"name": "Odd", "core": {"limiter": {"enabled": True, "values": {"threshold": -3}}},
+                                       "extras": [{"kind": "nope"}, 5]}))
+            events = helper.call(op="import", path=str(odd))
+            assert events[0]["name"] == "Odd" and "Odd" in events[-1]["presets"]
+
+            # A quiet command that fails says so without standing for a loud one.
+            events = helper.call(op="set", kind="limiter", prop="nope", value=1)
+            assert events[0]["type"] == "error" and events[1].get("quiet") is True
+            assert helper.state(op="refresh")["running"] is True
         finally:
             helper.close()
     print("audio engine: ok")

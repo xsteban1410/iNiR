@@ -278,18 +278,32 @@ class EasyEffects:
         return self.send(f"set_property:{pipe}:{path}:{text}")
 
     def bypassed(self) -> bool:
-        # The server answers 1 when bypassed and 2 when not, with no line break.
+        # The server answers 1 when bypassed and 2 when not, as one byte with no line break: it is taken from the
+        # shared buffer like any reply, so a byte read ahead is never lost and never read as the next reply.
         if not self.send("get_global_bypass"):
             return False
         try:
-            chunk = self.sock.recv(16)
+            while not self.buffer.lstrip():
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    self.drop()
+                    return False
+                self.buffer += chunk
         except OSError:
             self.drop()
             return False
-        return chunk.strip() == b"1"
+        self.buffer = self.buffer.lstrip()
+        reply, self.buffer = self.buffer[:1], self.buffer[1:]
+        return reply == b"1"
 
     def bypass(self, on: bool) -> bool:
-        return self.send(f"global_bypass:{1 if on else 0}")
+        """Set the global bypass and wait until EasyEffects reports it, so what is shown next is what is heard."""
+        if not self.send(f"global_bypass:{1 if on else 0}"):
+            return False
+        deadline = time.monotonic() + 0.6
+        while self.bypassed() != on and time.monotonic() < deadline:
+            time.sleep(0.03)
+        return True
 
     def quit(self) -> bool:
         if not self.send("quit_app"):
@@ -314,6 +328,7 @@ class Engine:
         self.schema = schema["plugins"]
         self.builtins = json.loads((HERE / "audio-presets.json").read_text(encoding="utf-8"))
         self.state = self._read_state()
+        self._seen = None
 
     # --- persistent engine state --------------------------------------------
 
@@ -333,6 +348,8 @@ class Engine:
         return data
 
     def _write_state(self) -> None:
+        # The person's presets, so Settings can offer them while the helper is not running.
+        self.state["presets"] = self.preset_names()
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.state_file.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.state, indent=1) + "\n", encoding="utf-8")
@@ -456,7 +473,7 @@ class Engine:
     def rebuild(self, plan: list, pipe: str = "output") -> bool:
         """Load the chain in `plan` (dicts: id, enabled, values, channels) and send its values."""
         order = [item["id"] for item in plan]
-        preset = {pipe: {"blocklist": self._config_list(pipe, "blocklist"), "plugins_order": order}}
+        preset = {pipe: {"blocklist": self.blocklist(pipe), "plugins_order": order}}
         for plugin_id in order:
             preset[pipe][plugin_id] = self._skeleton(kind_of(plugin_id))
         name = PIPES[pipe]["preset"]
@@ -478,6 +495,29 @@ class Engine:
         self._pipe(pipe)["chain"] = order
         self._write_state()
         return True
+
+    def blocklist(self, pipe: str = "output") -> list:
+        """The apps a chain leaves alone. EasyEffects keeps the list in its settings and takes a new one only from a
+        loaded preset; once the engine has changed it, its own copy is the truth (easyeffectsrc is written lazily)."""
+        own = self._pipe(pipe).get("blocklist")
+        return list(own) if isinstance(own, list) else self._config_list(pipe, "blocklist")
+
+    def exclude(self, name: str, on: bool, pipe: str = "output") -> None:
+        """Leave an app out of a chain, or take it back. EasyEffects matches a stream's node.name against the list
+        when the stream appears; the shell moves the stream that is already playing."""
+        name = str(name or "").strip()
+        if not name or "\n" in name or len(name) > 256:
+            raise ValueError("invalid_app")
+        current = self.blocklist(pipe)
+        wanted = sorted(set(current) | {name}) if on else [entry for entry in current if entry != name]
+        if wanted == current:
+            return
+        self._pipe(pipe)["blocklist"] = wanted
+        self._write_state()
+        if self.ee.connect():
+            chain = self.chain(pipe)
+            if not self.rebuild(self.snapshot(chain, pipe), pipe):
+                raise RuntimeError("chain_failed")
 
     def _wait(self, pipe: str, order: list) -> bool:
         deadline = time.monotonic() + 4
@@ -586,15 +626,16 @@ class Engine:
 
     def light(self, core: dict, chain: list) -> dict:
         """What a person can change, in a form to compare: core switches and values, band gains, extras."""
+        return self._light_of([self.read_plugin(core[kind]) for kind in CORE],
+                              [self.read_plugin(p) for p in chain if p not in core.values()])
+
+    @staticmethod
+    def _light_of(core_entries: list, extra_entries: list) -> dict:
         out = {"core": {}, "extras": []}
-        for kind in CORE:
-            entry = self.read_plugin(core[kind])
-            out["core"][kind] = {"enabled": entry["enabled"], "values": entry["values"],
-                                 "bands": [b["gain"] for b in entry.get("bands", [])]}
-        for plugin_id in chain:
-            if plugin_id in core.values():
-                continue
-            entry = self.read_plugin(plugin_id)
+        for entry in core_entries:
+            out["core"][entry["kind"]] = {"enabled": entry["enabled"], "values": entry["values"],
+                                          "bands": [b["gain"] for b in entry.get("bands", [])]}
+        for entry in extra_entries:
             out["extras"].append({"kind": entry["kind"], "enabled": entry["enabled"], "values": entry["values"]})
         return rounded(out)
 
@@ -606,12 +647,6 @@ class Engine:
             return
         self.state["baseline"] = {"light": self.light(core, chain), "plan": self.snapshot(chain)}
         self._write_state()
-
-    def modified(self, core: dict, chain: list) -> bool:
-        baseline = self.state.get("baseline")
-        if not baseline or not self.state.get("active") or not core:
-            return False
-        return self.light(core, chain) != baseline.get("light")
 
     def revert(self) -> None:
         baseline = self.state.get("baseline")
@@ -674,13 +709,35 @@ class Engine:
             modules.append(entry)
         return modules
 
-    def report(self) -> dict:
+    def signature(self) -> list:
+        """What a poll compares: whether EasyEffects runs, both chains, the bypass and the sound set. Cheap: no values."""
         if not self.ee.connect():
-            return {"type": "state", "running": False, "active": self.state.get("active", ""),
-                    "devices": self.state.get("devices", {}), "headroom": self.state.get("headroom", True)}
+            return [False]
+        return [True, self.chain(), self.chain("input"), self.ee.bypassed(), self.state.get("active", ""),
+                self._pipe("input").get("active", "")]
+
+    def poll(self) -> bool:
+        """Whether anything a surface shows may have changed since the last report."""
+        return self.signature() != self._seen
+
+    def _memory(self) -> dict:
+        return {"devices": self.state.get("devices", {}), "apps": self.state.get("apps", {}),
+                "excluded": {pipe: self.blocklist(pipe) for pipe in PIPES},
+                "headroom": self.state.get("headroom", True)}
+
+    def report(self) -> dict:
+        if self.state.get("presets") != self.preset_names():
+            self._write_state()
+        self._seen = self.signature()
+        if not self.ee.connect():
+            return {"type": "state", "running": False, "active": self.state.get("active", ""), **self._memory()}
         chain = self.chain()
         core = self.core_ids(chain)
         extras = [self.read_plugin(p) for p in chain if p not in core.values()]
+        core_entries = self._core_report("output", core)
+        baseline = self.state.get("baseline")
+        modified = bool(core and baseline and self.state.get("active")) \
+            and self._light_of(core_entries, extras) != baseline.get("light")
         for entry in extras:
             entry["props"] = [p for p in self.schema[entry["kind"]]["props"]
                               if p["name"] != "bypass" and p["type"] != "string"]
@@ -689,10 +746,9 @@ class Engine:
         if not mic_core and self._kept_core(mic_chain, "input"):
             mic_core = self.ensure_core("input")
         return {"type": "state", "running": True, "adopted": bool(core),
-                "core": self._core_report("output", core), "extras": extras,
-                "active": self.state.get("active", ""), "modified": self.modified(core, chain),
-                "bypass": self.ee.bypassed(), "headroom": self.state.get("headroom", True),
-                "devices": self.state.get("devices", {}),
+                "core": core_entries, "extras": extras,
+                "active": self.state.get("active", ""), "modified": modified,
+                "bypass": self.ee.bypassed(), **self._memory(),
                 "builtins": ["Default"] + list(self.builtins["presets"].keys()),
                 "presets": self.preset_names(), "presetInfo": self.preset_info(),
                 "mic": {"adopted": bool(mic_core), "core": self._core_report("input", mic_core),
@@ -841,6 +897,11 @@ class Engine:
         data = json.loads(path.read_text(encoding="utf-8"))
         data["name"] = new
         target = self._preset_path(new)
+        # Two names can share a file name ("Rock?" and "Rock_"): the other preset's file is never written over.
+        n = 2
+        while target.exists() and target != path:
+            target = self._preset_path(f"{new} {n}")
+            n += 1
         tmp = target.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
         tmp.replace(target)
@@ -848,9 +909,10 @@ class Engine:
             path.unlink(missing_ok=True)
         if self.state.get("active") == old:
             self.state["active"] = new
-        for sink, preset in list((self.state.get("devices") or {}).items()):
-            if preset == old:
-                self.state["devices"][sink] = new
+        for memory in ("devices", "apps"):
+            for key, preset in list((self.state.get(memory) or {}).items()):
+                if preset == old:
+                    self.state[memory][key] = new
         self._write_state()
 
     def delete(self, name: str) -> None:
@@ -858,8 +920,9 @@ class Engine:
         if path is None:
             raise ValueError("preset_not_found")
         path.unlink(missing_ok=True)
-        self.state["devices"] = {sink: preset for sink, preset in (self.state.get("devices") or {}).items()
-                                 if preset != name}
+        for memory in ("devices", "apps"):
+            self.state[memory] = {key: preset for key, preset in (self.state.get(memory) or {}).items()
+                                  if preset != name}
         # The sound it described is gone with it: the engine goes back to Default.
         if self.state.get("active") == name:
             if self.ee.connect():
@@ -926,6 +989,35 @@ class Engine:
         payload = self._to_easyeffects(data) if kind == "easyeffects" else data
         target_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
+    def _clean_preset(self, data: dict) -> dict:
+        """One of our presets from a file someone handed over: only known effects and well-formed entries are kept."""
+        def entry(raw):
+            if not isinstance(raw, dict):
+                return None
+            values = raw.get("values") if isinstance(raw.get("values"), dict) else {}
+            out = {"enabled": bool(raw.get("enabled")),
+                   "values": {k: v for k, v in values.items() if isinstance(v, (int, float, bool, str))}}
+            channels = raw.get("channels")
+            if isinstance(channels, dict):
+                out["channels"] = {side: {k: v for k, v in band.items() if isinstance(v, (int, float, bool, str))}
+                                   for side, band in channels.items()
+                                   if side in ("left", "right") and isinstance(band, dict)}
+            return out
+        core = data.get("core") if isinstance(data.get("core"), dict) else {}
+        extras = data.get("extras") if isinstance(data.get("extras"), list) else []
+        clean = {"name": str(data.get("name") or ""), "base": str(data.get("base") or ""), "core": {}, "extras": []}
+        for kind in CORE:
+            kept = entry(core.get(kind))
+            if kept is not None:
+                clean["core"][kind] = kept
+        for raw in extras:
+            kept = entry(raw)
+            if kept is not None and isinstance(raw, dict) and raw.get("kind") in self.schema:
+                clean["extras"].append(dict(kept, kind=raw["kind"]))
+        if not clean["core"] and not clean["extras"]:
+            raise ValueError("unknown_format")
+        return clean
+
     def import_preset(self, source: str) -> str:
         path = Path(source).expanduser()
         try:
@@ -935,7 +1027,8 @@ class Engine:
         if not isinstance(data, dict):
             raise ValueError("unknown_format")
         if "core" in data or "extras" in data:
-            data["name"] = self._free_name(str(data.get("name") or path.stem)[:NAME_MAX])
+            data = self._clean_preset(data)
+            data["name"] = self._free_name(str(data.get("name") or path.stem).strip()[:NAME_MAX] or "Imported")
             self._write_preset(data)
             return data["name"]
         if "output" not in data:
@@ -1159,6 +1252,20 @@ class Engine:
         (self.state.get("devices") or {}).pop(str(sink or ""), None)
         self._write_state()
 
+    def remember_app(self, app: str, preset: str) -> None:
+        """A sound an app brings while it plays, keyed by its node.name (what EasyEffects matches apps by too)."""
+        app = str(app or "").strip()
+        if not app or len(app) > 256:
+            raise ValueError("invalid_app")
+        if preset not in self._builtin_names() and self._find_preset(preset) is None:
+            raise ValueError("preset_not_found")
+        self.state.setdefault("apps", {})[app] = preset
+        self._write_state()
+
+    def forget_app(self, app: str) -> None:
+        (self.state.get("apps") or {}).pop(str(app or ""), None)
+        self._write_state()
+
     def set_headroom(self, on: bool) -> None:
         self.state["headroom"] = bool(on)
         self._write_state()
@@ -1167,6 +1274,30 @@ class Engine:
     def start(self) -> None:
         if not self.ee.start():
             raise RuntimeError("start_failed")
+        self._settle()
+
+    def _settle(self, timeout: float = 6) -> None:
+        """Right after it starts, EasyEffects answers on its socket before it has loaded its chains: until every
+        effect it will list answers, the chain reads empty and the core would be rebuilt over the person's own."""
+        deadline = time.monotonic() + timeout
+        for pipe in PIPES:
+            expected = [p for p in (self._pipe(pipe).get("chain") or self._config_list(pipe, "plugins"))
+                        if "#" in p and kind_of(p) in self.schema]
+            while expected and time.monotonic() < deadline:
+                expected = [p for p in expected if self.ee.get(pipe, f"{self._path(p)}:bypass") is None]
+                if expected:
+                    time.sleep(0.1)
+
+    def boot(self, name: str, mic: str = "") -> None:
+        """The sound iNiR starts with: EasyEffects started if it is not running, the preset played, the microphone's
+        sound when one is named, effects on."""
+        if not self.ee.connect():
+            self.start()
+        self.apply(name)
+        if mic:
+            self.apply_mic(mic)
+        if self.ee.bypassed():
+            self.ee.bypass(False)
 
     def quit(self) -> None:
         if not self.ee.quit():
@@ -1182,6 +1313,12 @@ class Engine:
             "status": None,
             "refresh": None,
             "start": self.start,
+            "boot": lambda: self.boot(str(request.get("name", "")), str(request.get("mic", "") or "")),
+            "poll": None,
+            "exclude": lambda: self.exclude(str(request.get("app", "")), bool(request.get("on")),
+                                            "input" if request.get("pipe") == "input" else "output"),
+            "rememberApp": lambda: self.remember_app(request.get("app"), str(request.get("preset", ""))),
+            "forgetApp": lambda: self.forget_app(request.get("app")),
             "quit": self.quit,
             "enable": lambda: self.set_enabled(request),
             "bands": lambda: self.set_bands(int(request.get("count", 0))),
@@ -1211,13 +1348,25 @@ class Engine:
                 return
             if op not in loud:
                 raise ValueError("unknown_op")
+            if op == "poll" and not self.poll():
+                emit({"type": "poll"})
+                return
             if loud[op] is not None:
                 loud[op]()
             if op == "export":
                 emit({"type": "exported", "path": str(request.get("path", ""))})
         except (ValueError, RuntimeError, OSError) as error:
             emit({"type": "error", "op": op, "message": str(error)})
-        if op in ("status", "start", "quit"):
+            if op in quiet:
+                # Nothing waits on a quiet command: the state it brings back only puts the knobs right.
+                emit(dict(self.report(), quiet=True))
+                return
+        except Exception as error:  # noqa: BLE001 - one bad request never ends the helper
+            emit({"type": "error", "op": op, "message": f"internal_{type(error).__name__}"})
+            if op in quiet:
+                emit(dict(self.report(), quiet=True))
+                return
+        if op in ("status", "start", "boot", "quit"):
             emit(self.status())
         emit(self.report())
 
@@ -1237,8 +1386,13 @@ def main() -> int:
         except ValueError:
             emit({"type": "error", "op": "", "message": "invalid_json"})
             continue
-        if isinstance(request, dict):
+        if not isinstance(request, dict):
+            continue
+        try:
             engine.handle(request)
+        except Exception as error:  # noqa: BLE001 - a report that fails still answers, so nothing waits forever
+            emit({"type": "error", "op": request.get("op"), "message": f"internal_{type(error).__name__}"})
+            emit({"type": "state", "running": False, "unknown": True})
     return 0
 
 
