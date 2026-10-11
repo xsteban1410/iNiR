@@ -155,7 +155,7 @@ Item {
         return requested
     }
 
-    readonly property var navKinds: ["media", "activity", "desktop", "tray", "tools", "focus", "today", "controls", "settings"]
+    readonly property var navKinds: ["media", "activity", "desktop", "tray", "tools", "sound", "focus", "today", "controls", "settings"]
     readonly property var navItems: {
         const chosen = Array.from(IrisStyle.structuralValue("bar.navItems", root.navKinds))
             .filter(kind => root.navKinds.includes(kind))
@@ -166,19 +166,20 @@ Item {
         if (kind === "activity") return root.hasSystemActivity
         if (kind === "focus") return Config.options?.iris?.sidebars?.left?.enable ?? true
         if (kind === "today") return Config.options?.iris?.sidebars?.right?.enable ?? true
+        if (kind === "sound") return GlobalStates.audioEngineAvailable
         return true
     }
     function navPageOf(kind: string): string {
         if (kind === "controls") return root.controlsInIsland ? "controls" : ""
-        return ["media", "activity", "desktop", "tray", "tools"].includes(kind) ? kind : ""
+        return ["media", "activity", "desktop", "tray", "tools", "sound"].includes(kind) ? kind : ""
     }
     readonly property var navEntries: {
         const glyphs = { media: "music_note", activity: root.recording ? "radio_button_checked"
                 : root.timerKind.length > 0 ? root.timerGlyph : String(root.task?.glyph ?? "bolt"),
-            desktop: "space_dashboard", tray: "apps", tools: "timer", focus: "left_panel_open",
+            desktop: "space_dashboard", tray: "apps", tools: "timer", sound: "graphic_eq", focus: "left_panel_open",
             today: "right_panel_open", controls: "tune", settings: "settings" }
         const labels = { media: "Now playing", activity: "Live activities", desktop: "Desktop", tray: "Tray",
-            tools: "Timers", focus: "Focus panel", today: "Today panel", controls: "Quick controls", settings: "Settings" }
+            tools: "Timers", sound: "Sound", focus: "Focus panel", today: "Today panel", controls: "Quick controls", settings: "Settings" }
         const visible = root.navItems.filter(kind => root.navAvailable(kind))
         const out = []
         let pages = true
@@ -2463,6 +2464,20 @@ Item {
                             active: activityPage.resident
                             asynchronous: !activityPage.current
                             sourceComponent: IslandActivityPage { width: activityLoader.width; island: root }
+                        }
+                    }
+
+                    Page {
+                        id: soundPage
+                        name: "sound"
+                        spacing: 12 * root.d
+                        Loader {
+                            id: soundLoader
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: item?.implicitHeight ?? 0
+                            active: soundPage.resident && GlobalStates.audioEngineAvailable
+                            asynchronous: !soundPage.current
+                            sourceComponent: IslandSoundPage { width: soundLoader.width; island: root }
                         }
                     }
 
