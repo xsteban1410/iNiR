@@ -91,7 +91,7 @@ else
   printf 'PASS: Web Wallpaper host is pure Qt QML\n'
 fi
 check grep -Fq 'args.indexOf("--probe")' "$repo_root/modules/background/WebWallpaperHost.qml"
-for package in plasma-browser-integration lsp-plugins-lv2 libdbusmenu-gtk3 alsa-pipewire; do
+for package in plasma-browser-integration lsp-plugins-lv2 calf x42-plugins libdbusmenu-gtk3 alsa-pipewire; do
   check array_has_package VOID_AUDIO_PACKAGES "$package"
 done
 check array_has_package VOID_TOOLKIT_PACKAGES ImageMagick

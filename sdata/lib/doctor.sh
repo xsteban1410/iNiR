@@ -203,6 +203,27 @@ check_dependencies() {
         missing_cmds+=("lsp-plugins-lv2")
     fi
 
+    # The iRiS Audio Engine's Bass Enhancer and Exciter are Calf's, its microphone
+    # Autotune is x42's fat1. The Flatpak carries its own plugins, so only a host
+    # EasyEffects is diagnosed.
+    if command -v easyeffects >/dev/null 2>&1; then
+        local lv2_check lv2_glob lv2_label lv2_id lv2_dir lv2_found
+        for lv2_check in "calf*.lv2|Calf LV2|calf" "fat1.lv2|x42 LV2|x42-plugins-lv2"; do
+            IFS='|' read -r lv2_glob lv2_label lv2_id <<<"$lv2_check"
+            lv2_found=false
+            for lv2_dir in /usr/lib/lv2 /usr/lib64/lv2 /usr/local/lib/lv2 /usr/local/lib64/lv2; do
+                if compgen -G "$lv2_dir/$lv2_glob" >/dev/null; then
+                    lv2_found=true
+                    break
+                fi
+            done
+            if [[ "$lv2_found" != true ]]; then
+                missing+=("$lv2_label")
+                missing_cmds+=("$lv2_id")
+            fi
+        done
+    fi
+
     # Tesseract itself can be installed while the language data iNiR exposes in
     # Settings is absent. Treat those models as first-class dependencies so an
     # existing install can be repaired instead of failing every OCR attempt.

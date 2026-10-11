@@ -152,6 +152,8 @@ Audio stack and media controls.
 | `cava` | Audio visualizer |
 | `easyeffects` | Audio effects |
 | `lsp-plugins-lv2` | EasyEffects equalizer backend |
+| `calf` | Bass Enhancer and Exciter for the iRiS Audio Engine (optional) |
+| `x42-plugins-lv2` | Microphone Autotune for the iRiS Audio Engine (optional) |
 
 `pipewire-jack` is an optional/recommended extra depending on your audio setup.
 
@@ -252,7 +254,9 @@ Not installed by default, but useful. The shell handles their absence gracefully
 | `whisper-cpp` | Local speech-to-text, no API key needed | Voice input and voice search |
 | `cava` | Audio visualizer | Bar widget (optional) |
 | `easyeffects` | Audio effects | Quick toggles panel |
-| `lsp-plugins-lv2` | EasyEffects equalizer backend | Media Controls equalizer |
+| `lsp-plugins-lv2` | EasyEffects equalizer backend | Media Controls equalizer, iRiS Audio Engine |
+| `calf` | Bass Enhancer and Exciter | iRiS Audio Engine |
+| `x42-plugins-lv2` | Microphone Autotune | iRiS Audio Engine |
 | `yt-dlp` | YouTube video/audio extraction | YTMusic sidebar |
 | `mpv` | Media player | YTMusic sidebar |
 | `deno` | JavaScript runtime for yt-dlp | YTMusic sidebar (YouTube challenge solving) |

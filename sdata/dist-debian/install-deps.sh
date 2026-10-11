@@ -612,6 +612,8 @@ DEBIAN_AUDIO_PKGS=(
   pavucontrol
   easyeffects
   lsp-plugins-lv2
+  calf-plugins
+  x42-plugins
   mpv
   yt-dlp
   socat

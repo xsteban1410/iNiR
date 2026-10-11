@@ -60,6 +60,8 @@ optdepends=(
   'ddcutil: external monitor brightness control'
   'easyeffects: audio effects integration'
   'lsp-plugins-lv2: EasyEffects equalizer backend'
+  'calf: Bass Enhancer and Exciter in the iRiS Audio Engine'
+  'x42-plugins-lv2: microphone Autotune in the iRiS Audio Engine'
   'ffmpeg: recording and video wallpaper helpers'
   'fprintd: fingerprint authentication integration'
   'geoclue: GPS-backed weather location detection'

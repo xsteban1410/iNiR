@@ -464,6 +464,8 @@ FEDORA_AUDIO_PKGS=(
   cava
   easyeffects
   lsp-plugins-lv2
+  lv2-calf-plugins
+  lv2-x42-plugins
   mpv
   yt-dlp
   socat

@@ -123,6 +123,8 @@ VOID_AUDIO_PACKAGES=(
   cava
   plasma-browser-integration
   lsp-plugins-lv2
+  calf
+  x42-plugins
   libspa-bluetooth
   songrec
 )

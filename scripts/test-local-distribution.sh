@@ -3166,7 +3166,7 @@ for pkg in fuzzel network-manager-applet; do
         exit 1
     fi
 done
-for pkg in songrec plasma-browser-integration lsp-plugins-lv2 libdbusmenu-gtk3 alsa-pipewire; do
+for pkg in songrec plasma-browser-integration lsp-plugins-lv2 calf x42-plugins libdbusmenu-gtk3 alsa-pipewire; do
     if ! grep -Eq "^[[:space:]]+$pkg$" <<< "$void_audio_block"; then
         printf 'FAIL: Void audio profile is missing required provider %s\n' "$pkg" >&2
         exit 1
@@ -4298,6 +4298,9 @@ if command -v python3 &>/dev/null && [[ -f "$runtime_root/scripts/lib/generate-i
 
     step "iRiS defaults"
     python3 "$runtime_root/scripts/test-iris-defaults.py"
+
+    step "Audio Engine helper against a fake EasyEffects"
+    python3 "$runtime_root/scripts/test-audio-engine.py"
 
     step "iRiS anime layer"
     python3 "$runtime_root/scripts/test-iris-anime-layer.py"

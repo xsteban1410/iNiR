@@ -20,6 +20,8 @@ depends=(
   ddcutil
   easyeffects
   lsp-plugins-lv2
+  calf
+  x42-plugins-lv2
   ffmpeg
   fprintd
   geoclue
