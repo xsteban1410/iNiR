@@ -96,6 +96,7 @@
     "scripts/test-runtime-payload.py",
     "scripts/orbit-visual-audit.sh",
     "scripts/lib/generate-ipc-registry.py",
+    "scripts/audio/generate_ee_schema.py",
     "scripts/quickshell-webengine",
     "scripts/setup/_template.sh.example",
     "scripts/setup/README.md",
