@@ -101,6 +101,13 @@ ColumnLayout {
         }
     }
 
+    // Autogain levels what it measures: what it measures is shown, against its target.
+    IrisAudioLoudness {
+        Layout.fillWidth: true
+        visible: !root.extra && root.entry?.kind === "autogain"
+        target: Number(root.values.target ?? -16)
+    }
+
     Repeater {
         model: root.chunks
         ColumnLayout {

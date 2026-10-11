@@ -163,9 +163,18 @@ Item {
         closeGraceMs: 0
         component: IrisAudioWindow {}
     }
-    // Outputs that remember a sound need a watcher only while some do.
+    // The sound iNiR starts with: once, a moment after the shell is up, so starting EasyEffects never delays it.
+    Timer {
+        interval: 3000
+        running: Config.ready
+        onTriggered: if (GlobalStates.audioEngineAvailable && (Config.options?.iris?.audio?.startup?.enable ?? false))
+            AudioEngine.boot(String(Config.options?.iris?.audio?.startup?.preset ?? "Default"),
+                String(Config.options?.iris?.audio?.startup?.mic ?? ""))
+    }
+    // Outputs and apps that remember a sound need a watcher only while some do.
     LazyLoader {
-        active: GlobalStates.audioEngineAvailable && Object.keys(AudioEngine.savedDevices).length > 0
+        active: GlobalStates.audioEngineAvailable
+            && (Object.keys(AudioEngine.savedDevices).length > 0 || Object.keys(AudioEngine.savedApps).length > 0)
         component: IrisAudioAutoload {}
     }
     IpcHandler {
@@ -188,7 +197,7 @@ Item {
             return "ok"
         }
         function page(name: string): string {
-            if (!["presets", "equalizer", "filter", "bass_enhancer", "exciter", "autogain", "limiter", "microphone", "add"].includes(name))
+            if (!["presets", "mixer", "equalizer", "filter", "bass_enhancer", "exciter", "autogain", "limiter", "microphone", "add"].includes(name))
                 return "unknown page"
             AudioEngine.lastSection = name
             GlobalStates.openAudioEngine()

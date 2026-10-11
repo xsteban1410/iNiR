@@ -35,6 +35,11 @@ Singleton {
     ]
     readonly property var core: root.sections.filter(section => section.id !== "presets").map(section => section.id)
 
+    // Levels, not effects: every device and app at its own volume, with or without EasyEffects.
+    readonly property var mixerSection: ({ id: "mixer", title: "Volume", glyph: "tune", tint: "indigo",
+        line: "Every speaker, microphone and app at its own level.",
+        tip: "These are your system's levels, so they work with EasyEffects off too. Use makes a device the one everything plays through or records from." })
+
     // The microphone has its own chain: what others hear of you on calls and streams.
     readonly property var micSection: ({ id: "microphone", title: "Microphone", glyph: "mic", tint: "orange",
         line: "What others hear of you: less noise, an even voice.",

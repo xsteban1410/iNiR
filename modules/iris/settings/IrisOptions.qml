@@ -6,6 +6,7 @@ import Quickshell
 import qs
 import qs.modules.common
 import qs.services
+import qs.services.deferred
 import qs.modules.iris.style
 import qs.modules.iris.pieces
 import qs.modules.iris.frame
@@ -81,6 +82,9 @@ QtObject {
     function choicesOf(spec: var): var {
         if (spec.niri === "display") return IrisNiri.displayChoices(spec.key)
         if (spec.choicesFrom === "cursors") return IrisNiri.cursorThemes.map(name => ({ label: name.replace(/[_-]/g, " "), value: name }))
+        if (spec.choicesFrom === "audioPresets") return AudioEngine.catalog.map(name => ({ label: name, value: name }))
+        if (spec.choicesFrom === "micPresets") return [{ label: "Leave as it is", value: "" }]
+            .concat(AudioEngine.micNames.map(name => ({ label: name, value: name })))
         if (spec.choicesFrom === "irisModules") return (CustomWidgets.widgets ?? [])
             .filter(widget => String(widget.irisQmlPath ?? "").length > 0)
             .map(widget => ({ label: String(widget.name ?? widget.id), value: "custom:" + widget.id }))
@@ -597,7 +601,9 @@ QtObject {
         anime: { description: "The mark on the Airing bubble and its card. The next episode's cover replaces it on the bubble whenever there is one.",
             glyphs: ["live_tv", "smart_display", "subscriptions", "theaters", "animation", "movie"] },
         watching: { description: "The mark on the Continue bubble and its card. The bubble shows the episode number inside its progress ring once you have watched something.",
-            glyphs: ["resume", "play_circle", "not_started", "slow_motion_video", "video_library", "history"] }
+            glyphs: ["resume", "play_circle", "not_started", "slow_motion_video", "video_library", "history"] },
+        audioEngine: { description: "The mark on the Audio Engine bubble. While a sound shapes what plays, the disc behind it fills, so the glyph stays yours.",
+            glyphs: ["graphic_eq", "equalizer", "tune", "music_note", "speaker", "surround_sound"] }
     })
 
     readonly property var bubbleRows: {
@@ -826,6 +832,10 @@ QtObject {
         { section: "sound", group: "Volume", label: "Volume limit", description: "Above 100 % amplifies the sound and can distort it; 153 % is as far as the system mixer goes.", path: "audio.protection.maxAllowed", visibleWhen: "audio.protection.enable", kind: "range", fallback: 100, min: 50, max: 154, step: 2, unit: " %", keywords: ["earbang", "volume", "limit", "boost", "amplify", "over 100", "150"] },
         { section: "sound", group: "Audio Engine", label: "Audio Engine", description: "Equalizer, filter, bass, exciter, loudness and limiter on EasyEffects, with presets you can save. The Control Center's Effects control opens it on right click.", path: "iris.audio.enable", kind: "switch", fallback: true, keywords: ["easyeffects", "equalizer", "eq", "bass", "effects", "preset", "limiter", "sound"] },
         { section: "sound", group: "Audio Engine", label: "Opens as", description: "Over the desktop it sits above everything; a window sits with your apps, and Niri sizes and moves it.", path: "iris.audio.host", visibleWhen: "iris.audio.enable", kind: "choice", fallback: "overlay", choices: [{ label: "Over the desktop", value: "overlay", glyph: "layers" }, { label: "Window", value: "window", glyph: "web_asset" }], keywords: ["audio engine", "window", "overlay", "floating"] },
+        { section: "sound", group: "Audio Engine", label: "Shortcut in Now Playing", description: "A button beside the player's controls, on the Island and in the player's card, opens the Audio Engine.", path: "iris.audio.playerShortcut", visibleWhen: "iris.audio.enable", kind: "switch", fallback: true, keywords: ["audio engine", "player", "now playing", "media", "music", "shortcut", "equalizer"] },
+        { section: "sound", group: "Audio Engine", label: "Start with a sound", description: "When iNiR starts, EasyEffects starts too and plays the sound you pick, effects on. A built-in sound shapes the effects you left on.", path: "iris.audio.startup.enable", visibleWhen: "iris.audio.enable", kind: "switch", fallback: false, keywords: ["audio engine", "startup", "start", "boot", "login", "autostart", "preset", "easyeffects", "inicio", "arranque"] },
+        { section: "sound", group: "Audio Engine", label: "Sound at start", description: "Built in or one of yours. Renaming it keeps it; deleting it goes back to Default.", path: "iris.audio.startup.preset", showIf: () => (Config.options?.iris?.audio?.enable ?? true) && (Config.options?.iris?.audio?.startup?.enable ?? false), kind: "choice", fallback: "Default", choicesFrom: "audioPresets", keywords: ["audio engine", "startup", "preset", "sound", "inicio"] },
+        { section: "sound", group: "Audio Engine", label: "Microphone at start", description: "A sound for your microphone too, or leave it as you last set it.", path: "iris.audio.startup.mic", showIf: () => (Config.options?.iris?.audio?.enable ?? true) && (Config.options?.iris?.audio?.startup?.enable ?? false), kind: "choice", fallback: "", choicesFrom: "micPresets", keywords: ["audio engine", "startup", "microphone", "mic", "calls", "streaming", "micrófono", "inicio"] },
         { section: "sound", group: "Audio Engine", label: "Open the Audio Engine", kind: "action", button: "Open", run: () => { GlobalStates.settingsOverlayOpen = false; GlobalStates.openAudioEngine() }, showIf: () => Config.options?.iris?.audio?.enable ?? true, keywords: ["easyeffects", "equalizer", "presets"] },
     ].concat(...["left", "right"].map(side => [
         { section: "sidebars", group: side === "left" ? "Focus · left" : "Today · right", label: "Enable panel", path: "iris.sidebars." + side + ".enable", kind: "switch", fallback:true },

@@ -42,6 +42,7 @@ GridLayout {
     }
 
     readonly property bool anime: AnimeWatch.ownsPlayer(page.island.player)
+    readonly property bool engineShortcut: GlobalStates.audioEngineAvailable && (Config.options?.iris?.audio?.playerShortcut ?? true)
     readonly property var otherPlayers: (MprisController.displayPlayers ?? []).filter(p => p && p !== page.island.player)
     readonly property var streams: {
         const groups = []
@@ -190,7 +191,25 @@ GridLayout {
             }
                 }
             }
-            Item { Layout.fillWidth: true }
+            // Both sides fill alike, so the transport stays centred whether the shortcut shows or not.
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                GlyphButton {
+                    visible: page.engineShortcut
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    glyph: "graphic_eq"
+                    glyphSize: 20 * IrisStyle.density
+                    implicitWidth: 36 * IrisStyle.density
+                    glyphColor: page.engineShortcut && AudioEngine.effectsOn ? IrisStyle.identity.pink : IrisStyle.textSecondary
+                    Accessible.name: Translation.tr("Open the Audio Engine")
+                    onClicked: {
+                        page.island.expanded = false
+                        GlobalStates.openAudioEngine()
+                    }
+                }
+            }
         }
         ColumnLayout {
             Layout.fillWidth: true

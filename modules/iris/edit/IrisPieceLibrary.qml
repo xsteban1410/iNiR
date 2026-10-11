@@ -36,6 +36,7 @@ ColumnLayout {
             tools: "timer", media: "play_circle", visualizer: "graphic_eq", tray: "widgets", calendar: "calendar_month", clock: "schedule",
             battery: "battery_full", focus: "bedtime", network: "wifi", bluetooth: "bluetooth", vitals: "monitoring",
             workspaces: "grid_view", updates: "deployed_code_update", shellUpdate: "rocket_launch", vpn: "vpn_lock",
+            audioEngine: IrisPieces.glyphOf("audioEngine", ""),
             anime: IrisPieces.glyphOf("anime", ""), watching: IrisPieces.glyphOf("watching", "") })[kind] ?? "circle"
     }
 

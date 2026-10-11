@@ -37,6 +37,8 @@ QtObject {
         { id: "media", label: "Now playing", description: "The cover while something plays; opens its card.", card: true },
         { id: "visualizer", label: "Visualizer", description: "What plays, drawn as it sounds: capsules, a rising equalizer, dots, a wave or a ring. Its look is in Now Playing; it opens the player's card.", card: true,
             keywords: ["visualizer", "visualiser", "cava", "spectrum", "equalizer", "ecualizador", "bars", "barras", "wave", "onda", "audio", "music", "musica"] },
+        { id: "audioEngine", label: "Audio Engine", description: "Lights up while a sound shapes what plays. Its card switches sounds and effects; scroll over it to step through your sounds, middle-click to hear without effects.", card: true,
+            keywords: ["audio engine", "easyeffects", "equalizer", "ecualizador", "eq", "effects", "efectos", "preset", "bass", "sound", "sonido", "mixer", "volume", "volumen"] },
         { id: "tray", label: "Tray", description: "The apps running in the tray, as their icons or a count.", card: true },
         { id: "calendar", label: "Calendar", description: "Today's weekday over the date; its card holds the month and what is coming up.", card: true },
         { id: "clock", label: "Clock", description: "An analog face; opens the Desktop page.", card: false },
@@ -202,6 +204,7 @@ QtObject {
         if (id === "shellUpdate") return ShellUpdates.showUpdate || ShellUpdates.isUpdating
         if (id === "vpn") return Vpn.available
         if (id === "watching") return AnimeWatch.available
+        if (id === "audioEngine") return Config.options?.panelFamily === "iris" && (Config.options?.iris?.audio?.enable ?? true)
         return root.extraIds.includes(id)
     }
     // What a piece needs from outside iNiR, as one line for the moment its
@@ -215,7 +218,7 @@ QtObject {
     // Pieces whose resting face is a glyph, so it can be chosen. Pieces that draw a
     // figure, a ring or a count (clock, battery, sound, network strength…) are left
     // out: their face carries state, not an affordance.
-    readonly property var iconKinds: ["controls", "tools", "focus", "notifications", "bluetooth", "updates", "anime", "watching"]
+    readonly property var iconKinds: ["controls", "tools", "focus", "notifications", "bluetooth", "updates", "anime", "watching", "audioEngine"]
     readonly property var icons: Config.options?.iris?.pieces?.icons ?? []
     function defaultGlyph(kind: string): string {
         if (kind === "controls") return Network.wifiEnabled ? "wifi" : "tune"
@@ -226,6 +229,7 @@ QtObject {
         if (kind === "updates") return "task_alt"
         if (kind === "anime") return "live_tv"
         if (kind === "watching") return "resume"
+        if (kind === "audioEngine") return "graphic_eq"
         return ""
     }
     // stateGlyph is the piece's own variant for the state it is in; a chosen glyph

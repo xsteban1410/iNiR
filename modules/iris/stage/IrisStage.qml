@@ -8,6 +8,7 @@ import Quickshell.Widgets
 import Quickshell.Services.SystemTray
 import qs
 import qs.services
+import qs.services.deferred
 import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.widgets
@@ -866,6 +867,18 @@ Item {
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             onWheel: event => bubble.trayItem?.scroll(event.angleDelta.y || event.angleDelta.x, event.angleDelta.y === 0)
         }
+        // The Audio Engine bubble steps through the sounds, one per notch.
+        WheelHandler {
+            enabled: bubble.kind === "audioEngine"
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: event => {
+                bubble.wheelAccumulator += event.angleDelta.y || event.pixelDelta.y * 4
+                const steps = Math.trunc(bubble.wheelAccumulator / 120)
+                if (steps === 0 || AudioEngine.busy) return
+                bubble.wheelAccumulator -= steps * 120
+                AudioEngine.stepPreset(steps > 0 ? -1 : 1)
+            }
+        }
         WheelHandler {
             enabled: bubble.kind === "sound" || bubble.kind === "mic"
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
@@ -937,10 +950,15 @@ Item {
         }
         MouseArea {
             anchors.fill: parent
-            acceptedButtons: bubble.kind === "trayApp" ? Qt.RightButton | Qt.MiddleButton : Qt.RightButton
+            acceptedButtons: bubble.kind === "trayApp" || bubble.kind === "audioEngine" ? Qt.RightButton | Qt.MiddleButton : Qt.RightButton
             onPressed: event => {
                 if (bubble.kind === "trayApp" && event.button === Qt.MiddleButton) {
                     bubble.trayItem?.secondaryActivate()
+                    return
+                }
+                if (bubble.kind === "audioEngine" && event.button === Qt.MiddleButton) {
+                    AudioEngine.hold()
+                    AudioEngine.toggleBypass()
                     return
                 }
                 if (bubble.kind === "trayApp" && bubble.trayItem?.hasMenu) {
@@ -1069,6 +1087,8 @@ Item {
             GlobalStates.openSidebarRight(root.screenName)
         } else if (kind === "focus") {
             Notifications.silent = !Notifications.silent
+        } else if (kind === "audioEngine") {
+            GlobalStates.toggleAudioEngine()
         } else if (kind === "battery") {
             root.toggleControls(slot, rect)
         } else if (kind === "weather" || kind === "clock") {
@@ -1116,7 +1136,7 @@ Item {
         sound: "volume_up", mic: "mic", tools: "timer", media: "play_circle", tray: "widgets",
         timer: "hourglass_top", record: "fiber_manual_record", app: "open_in_new",
         network: "wifi", bluetooth: "bluetooth", vitals: "monitoring", workspaces: "grid_view",
-        updates: "deployed_code_update" })
+        updates: "deployed_code_update", audioEngine: "graphic_eq" })
     function openText(kind: string, slot: string): string {
         if (kind === "controls") return Translation.tr("Open Control Center")
         if (kind === "notifications") return Translation.tr("Open notifications")

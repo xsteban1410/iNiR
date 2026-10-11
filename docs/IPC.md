@@ -645,7 +645,7 @@ Open the iRiS Audio Engine: EasyEffects' output chain with six core effects (Equ
 | `toggle` | Open/close the Audio Engine (brings its window forward when it is behind) |
 | `open` | Show the Audio Engine |
 | `close` | Hide the Audio Engine |
-| `page <name>` | Open it on one page: `presets`, `equalizer`, `filter`, `bass_enhancer`, `exciter`, `autogain`, `limiter`, `microphone` or `add` |
+| `page <name>` | Open it on one page: `presets`, `mixer` (every device and app at its own volume), `equalizer`, `filter`, `bass_enhancer`, `exciter`, `autogain`, `limiter`, `microphone` or `add` |
 | `preset <name>` | Play a sound by name, built in (`Default`, `Voice`, `Rock`…) or one of yours |
 | `bypass` | Hear everything without effects, or bring them back (EasyEffects' global bypass) |
 

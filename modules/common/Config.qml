@@ -4249,6 +4249,12 @@ Singleton {
                 property JsonObject audio: JsonObject {
                     property bool enable: true
                     property string host: "overlay" // "overlay" over the desktop, or "window"
+                    property bool playerShortcut: true
+                    property JsonObject startup: JsonObject {
+                        property bool enable: false
+                        property string preset: "Default"
+                        property string mic: "" // a microphone sound, or "" to leave the microphone as it is
+                    }
                 }
                 property JsonObject tray: JsonObject {
                     property bool hidePassive: false
@@ -4430,6 +4436,12 @@ Singleton {
                             property real fy: 0.5
                         }
                         property JsonObject anime: JsonObject {
+                            property bool enable: false
+                            property string place: "right"
+                            property real fx: 0.5
+                            property real fy: 0.5
+                        }
+                        property JsonObject audioEngine: JsonObject {
                             property bool enable: false
                             property string place: "right"
                             property real fx: 0.5

@@ -18,6 +18,7 @@ import qs.modules.iris.pieces
 import qs.modules.iris.bar
 import qs.modules.iris.bar.island
 import qs.modules.iris.sidebar
+import qs.modules.iris.audio
 
 Item {
     id: root
@@ -48,6 +49,7 @@ Item {
         case "watching": return IrisStyle.identity.pink
         case "shellUpdate": return IrisStyle.secondaryAccent
         case "vpn": return IrisStyle.identity.green
+        case "audioEngine": return IrisStyle.identity.pink
         default: return IrisStyle.wallpaperLight
         }
     }
@@ -80,6 +82,7 @@ Item {
             case "watching": return watchingCard
             case "shellUpdate": return shellUpdateCard
             case "vpn": return vpnCard
+            case "audioEngine": return audioEngineCard
             default: return null
             }
         }
@@ -829,6 +832,16 @@ Item {
         }
     }
     Component {
+        id: audioEngineCard
+        IrisAudioQuick {
+            live: root.contentActive
+            onOpenRequested: {
+                root.close()
+                GlobalStates.openAudioEngine()
+            }
+        }
+    }
+    Component {
         id: shellUpdateCard
         ColumnLayout {
             id: updateCard
@@ -1039,6 +1052,11 @@ Item {
                 showBackground: false
                 active: root.contentActive
                 tint: player.tint
+                offersEngine: GlobalStates.audioEngineAvailable && (Config.options?.iris?.audio?.playerShortcut ?? true)
+                onEngineRequested: {
+                    root.close()
+                    GlobalStates.openAudioEngine()
+                }
             }
         }
     }

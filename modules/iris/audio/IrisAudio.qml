@@ -52,7 +52,9 @@ Item {
         root.section = rest.length > 0 ? rest[Math.min(at, rest.length - 1)].id : "presets"
         AudioEngine.removeEffect(id)
     }
-    readonly property var current: root.section === "microphone" ? IrisAudioModules.micSection : IrisAudioModules.section(root.section)
+    readonly property var current: root.section === "microphone" ? IrisAudioModules.micSection
+        : root.section === "mixer" ? IrisAudioModules.mixerSection
+        : IrisAudioModules.section(root.section)
         ?? root.extraSections.find(entry => entry.id === root.section)
         ?? (root.section === "add" ? { id: "add", title: "Add effect", glyph: "add", tint: "gray",
                                        line: "Any other EasyEffects effect, after the core ones.",
@@ -62,6 +64,8 @@ Item {
         : !AudioEngine.installed ? "missing"
         : !AudioEngine.running ? "stopped"
         : "ready"
+    // Volume is the system's, not EasyEffects': it answers whatever state the engine is in.
+    readonly property bool pageShown: root.phase === "ready" || root.section === "mixer"
 
     function close(): void { GlobalStates.audioEngineOpen = false }
     // The other host opens on the same page: the page lives in the service, the host is the person's choice.
@@ -171,9 +175,19 @@ Item {
                             }
                         }
 
+                        SideRow {
+                            modelData: IrisAudioModules.sections[0]
+                            index: 0
+                            gapAbove: true
+                        }
+                        SideRow {
+                            modelData: IrisAudioModules.mixerSection
+                            index: 0
+                            always: true
+                        }
                         Repeater {
-                            model: IrisAudioModules.sections
-                            SideRow { gapAbove: index <= 1 }
+                            model: IrisAudioModules.sections.slice(1)
+                            SideRow { gapAbove: index === 0 }
                         }
                         SideRow {
                             gapAbove: true
@@ -254,7 +268,7 @@ Item {
                     Flickable {
                         id: page
                         anchors.fill: parent
-                        visible: root.phase === "ready"
+                        visible: root.pageShown
                         clip: true
                         contentHeight: pageColumn.implicitHeight + Math.round(32 * root.d)
                         boundsBehavior: Flickable.StopAtBounds
@@ -271,9 +285,10 @@ Item {
 
                             Loader {
                                 Layout.fillWidth: true
-                                active: root.phase === "ready"
+                                active: root.pageShown
                                 visible: active
-                                sourceComponent: root.section === "presets" ? presetsPage
+                                sourceComponent: root.section === "mixer" ? mixerPage
+                                    : root.section === "presets" ? presetsPage
                                     : root.section === "microphone" ? micPage
                                     : root.section === "equalizer" ? equalizerPage
                                     : root.section === "add" ? addPage
@@ -283,7 +298,7 @@ Item {
                     }
 
                     StatePane {
-                        visible: root.phase !== "ready"
+                        visible: !root.pageShown
                         anchors.centerIn: parent
                         anchors.verticalCenterOffset: -Math.round(26 * root.d)
                         width: Math.min(parent.width - 40 * root.d, 460 * root.d)
@@ -384,6 +399,7 @@ Item {
     }
 
     Component { id: presetsPage; IrisAudioPresetsPage {} }
+    Component { id: mixerPage; IrisAudioMixerPage {} }
     Component { id: micPage; IrisAudioMicPage {} }
     Component { id: addPage; IrisAudioAddPage { onAdded: kind => root.pendingKind = kind } }
     Component { id: equalizerPage; IrisAudioEqualizerPage { entry: AudioEngine.module("equalizer") } }
@@ -414,13 +430,15 @@ Item {
         required property var modelData
         required property int index
         property bool gapAbove: false
+        // A row whose page answers with EasyEffects off or missing.
+        property bool always: false
         readonly property bool selected: root.section === row.modelData.id
         readonly property real rowHeight: Math.round(27 * root.d * Math.max(1, IrisStyle.typeScale))
         width: parent ? parent.width : 0
         height: row.rowHeight + (row.gapAbove ? Math.round(8 * root.d) : 0)
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        enabled: root.phase === "ready"
+        enabled: row.always || root.phase === "ready"
         opacity: enabled ? 1 : 0.4
         Accessible.role: Accessible.Button
         Accessible.name: Translation.tr(row.modelData.title)

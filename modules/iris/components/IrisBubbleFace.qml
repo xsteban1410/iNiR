@@ -534,6 +534,24 @@ Item {
                 color: Notifications.silent ? IrisStyle.onTint : root.ink
             }
         }
+        // Filled in the Audio Engine's own hue while a sound shapes what plays, like Do Not Disturb while silenced.
+        Rectangle {
+            id: engineFace
+            readonly property bool lit: root.kind === "audioEngine" && AudioEngine.effectsOn
+            visible: root.kind === "audioEngine"
+            anchors.fill: parent
+            anchors.margins: 3 * root.d + root.platedInset
+            radius: Math.min(width / 2, Math.max(0, IrisStyle.pieceRadius(root.width) - anchors.margins))
+            color: engineFace.lit ? IrisStyle.identity.pink : "transparent"
+            Behavior on color { ColorAnimation { duration: IrisStyle.duration(180); easing.type: IrisStyle.feedbackEasing } }
+            Glyph {
+                anchors.centerIn: parent
+                text: IrisPieces.glyphOf("audioEngine", "")
+                fill: engineFace.lit ? 1 : 0
+                iconSize: 17 * root.d
+                color: engineFace.lit ? IrisStyle.onTint : root.ink
+            }
+        }
         Item {
             id: networkFace
             visible: root.kind === "network"
@@ -924,5 +942,6 @@ Item {
         : root.kind === "watching" ? Translation.tr("Continue")
         : root.kind === "shellUpdate" ? Translation.tr("New iNiR")
         : root.kind === "vpn" ? Translation.tr("VPN")
+        : root.kind === "audioEngine" ? Translation.tr("Audio Engine")
         : root.kind === "record" ? Translation.tr("Screen recording") : Translation.tr("Timer")
 }

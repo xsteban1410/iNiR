@@ -18,7 +18,8 @@ Singleton {
     readonly property bool enabled: Config.options?.iris?.audio?.enable ?? true
     property int users: 0
     property int holds: 0
-    readonly property bool live: root.enabled && (root.users > 0 || root.holds > 0)
+    // A command in flight keeps the helper too: a chain rebuilt or EasyEffects started outlasts a hold.
+    readonly property bool live: root.enabled && (root.users > 0 || root.holds > 0 || root.busy)
 
     property bool ready: false
     property bool installed: false
@@ -34,6 +35,9 @@ Singleton {
     property bool bypass: false
     property bool headroom: true
     property var devices: ({})
+    // Sounds apps bring while they play (node.name → preset), and the apps each chain leaves alone.
+    property var apps: ({})
+    property var excluded: ({ output: [], input: [] })
     property var mic: ({ adopted: false, core: [], active: "", builtins: [] })
     property list<string> builtins: []
     property list<string> presets: []
@@ -51,8 +55,26 @@ Singleton {
     // memory need it while the Audio Engine is closed.
     readonly property string savedActive: String(root._saved?.active ?? "")
     readonly property var savedDevices: root._saved?.devices ?? ({})
+    readonly property var savedApps: root._saved?.apps ?? ({})
+    // Which apps a chain leaves alone, read from the state like the rest: the Volume page answers without the helper.
+    function isExcluded(app: string, pipe: string): bool {
+        const own = root.ready ? root.excluded?.[pipe] : root._saved?.pipes?.[pipe]?.blocklist
+        return Array.from(own ?? []).includes(app)
+    }
     property var _saved: ({})
     readonly property string shownActive: root.ready && root.running ? root.active : root.savedActive
+    // Whether a sound is shaping what plays, for the faces that only point at the Audio Engine.
+    readonly property bool effectsOn: root.ready
+        ? root.running && !root.bypass && root.active.length > 0 && root.active !== "Default"
+        : root.savedActive.length > 0 && root.savedActive !== "Default"
+    // Every sound by name, without running the helper: the built-ins from their file, the person's from the state.
+    readonly property list<string> builtinNames: root._builtinNames
+    property list<string> _builtinNames: ["Default"]
+    readonly property list<string> micNames: root._micNames
+    property list<string> _micNames: []
+    readonly property var savedPresets: root._saved?.presets ?? []
+    readonly property var catalog: root.builtinNames.concat(Array.from(root.savedPresets))
+    property bool booted: false
 
     readonly property string helper: Quickshell.shellPath("scripts/audio/audio_engine.py")
     readonly property string presetsDir: `${Directories.shellConfig}/audio/presets`
@@ -87,8 +109,12 @@ Singleton {
     function _send(request: var, loud: bool): void {
         if (!root.enabled)
             return
-        if (loud)
+        if (loud) {
             root.pending++
+            // A new command starts clean: the last one's error no longer describes anything. A poll is not a command.
+            if (!["poll", "refresh", "status"].includes(request.op))
+                root.error = ""
+        }
         if (!proc.running) {
             root._queue = [...root._queue, request]
             return
@@ -123,6 +149,39 @@ Singleton {
     }
 
     function quitEasyEffects(): void { root._send({ op: "quit" }, true) }
+
+    // The sound iNiR starts with (Settings › Sound & Feedback › Audio Engine): once per shell.
+    function boot(name: string, mic: string): void {
+        if (root.booted) return
+        root.booted = true
+        root._send({ op: "boot", name: name.length > 0 ? name : "Default", mic: mic }, true)
+    }
+
+    // The next or previous sound in the list everything shows (built in, then yours), from the one playing.
+    function stepPreset(step: int): void {
+        const list = root.catalog
+        if (list.length === 0) return
+        const at = list.indexOf(root.shownActive)
+        const next = list[((at < 0 ? (step > 0 ? -1 : 0) : at) + step + list.length) % list.length]
+        root.hold()
+        root.applyPreset(next)
+    }
+
+    // Leaving an app out of a chain reloads it (EasyEffects reads its list only from a preset): the sound drops for an instant.
+    // EasyEffects claims back any stream it does not leave alone, so a stream is moved only once the chain that leaves
+    // its app out has loaded: excludeApplied says when.
+    signal excludeApplied(string app, bool on, string pipe)
+    property var _excludeWaiting: []
+    function exclude(app: string, on: bool, pipe: string): void {
+        const next = Object.assign({}, root.excluded)
+        const list = Array.from(next[pipe] ?? []).filter(entry => entry !== app)
+        next[pipe] = on ? list.concat([app]).sort() : list
+        root.excluded = next
+        root._excludeWaiting = root._excludeWaiting.concat([{ app: app, on: on, pipe: pipe }])
+        root._send({ op: "exclude", app: app, on: on, pipe: pipe }, true)
+    }
+    function rememberApp(app: string, preset: string): void { root._send({ op: "rememberApp", app: app, preset: preset }, true) }
+    function forgetApp(app: string): void { root._send({ op: "forgetApp", app: app }, true) }
 
     function setEnabled(ref: string, on: bool): void {
         const target = root._target(ref)
@@ -206,8 +265,16 @@ Singleton {
     function applyMic(name: string): void { root._send({ op: "mic", name: name }, true) }
     function loadPreset(name: string): void { root._send({ op: "load", name: name }, true) }
     function savePreset(name: string): void { root._send({ op: "save", name: name }, true) }
-    function renamePreset(from: string, to: string): void { root._send({ op: "rename", from: from, to: to }, true) }
-    function deletePreset(name: string): void { root._send({ op: "delete", name: name }, true) }
+    // The sound iNiR starts with follows its preset when it is renamed, and falls back to Default when it is deleted.
+    readonly property string startupPreset: String(Config.options?.iris?.audio?.startup?.preset ?? "Default")
+    function renamePreset(from: string, to: string): void {
+        if (root.startupPreset === from) Config.setNestedValue("iris.audio.startup.preset", to)
+        root._send({ op: "rename", from: from, to: to }, true)
+    }
+    function deletePreset(name: string): void {
+        if (root.startupPreset === name) Config.setNestedValue("iris.audio.startup.preset", "Default")
+        root._send({ op: "delete", name: name }, true)
+    }
     function revert(): void { root._send({ op: "revert" }, true) }
     function addEffect(kind: string): void { root._send({ op: "add", kind: kind }, true) }
     function removeEffect(id: string): void { root._send({ op: "remove", id: id }, true) }
@@ -233,7 +300,7 @@ Singleton {
             root.extraKinds = event.extras ?? []
         } else if (event.type === "error") {
             root.error = String(event.message ?? "")
-            if (event.op === "start")
+            if (event.op === "start" || event.op === "boot")
                 root.starting = false
         } else if (event.type === "bypass") {
             root.bypass = event.on === true
@@ -241,10 +308,25 @@ Singleton {
             root.notice = "exported"
         } else if (event.type === "imported") {
             root.notice = "imported"
-        } else if (event.type === "state") {
+        } else if (event.type === "poll") {
+            // Nothing changed since the last state: the poll is answered and nothing is read again.
             root.pending = Math.max(0, root.pending - 1)
+        } else if (event.type === "state") {
+            // A quiet command's state only corrects the knobs; nothing was counted for it.
+            if (event.quiet !== true)
+                root.pending = Math.max(0, root.pending - 1)
+            // A report that failed tells nothing about EasyEffects.
+            if (event.unknown === true)
+                return
             root.running = event.running === true
+            if (root.pending === 0 && root._excludeWaiting.length > 0) {
+                const done = root._excludeWaiting
+                root._excludeWaiting = []
+                for (const entry of done) root.excludeApplied(entry.app, entry.on, entry.pipe)
+            }
             root.devices = event.devices ?? root.devices
+            root.apps = event.apps ?? root.apps
+            root.excluded = event.excluded ?? root.excluded
             root.headroom = event.headroom ?? root.headroom
             if (root.running) {
                 root.starting = false
@@ -266,6 +348,7 @@ Singleton {
     onLiveChanged: {
         if (!root.live) {
             root.pending = 0
+            root._excludeWaiting = []
             root.ready = false
             root._queue = []
         }
@@ -279,6 +362,8 @@ Singleton {
         stdout: SplitParser {
             onRead: line => root._consume(line)
         }
+        // A helper that dies leaves nothing to answer what was asked of it.
+        onExited: root.pending = 0
         onStarted: {
             const queued = root._queue
             root._queue = []
@@ -302,6 +387,19 @@ Singleton {
         onLoadFailed: root._saved = ({})
     }
 
+    FileView {
+        path: Quickshell.shellPath("scripts/audio/audio-presets.json")
+        onLoaded: {
+            try {
+                const data = JSON.parse(text())
+                root._builtinNames = ["Default"].concat(Object.keys(data.presets ?? {}))
+                root._micNames = Object.keys(data.microphone ?? {})
+            } catch (e) {
+                root._builtinNames = ["Default"]
+            }
+        }
+    }
+
     // A command from outside a surface keeps the helper only as long as it takes.
     Timer {
         id: holdTimer
@@ -316,11 +414,17 @@ Singleton {
         onTriggered: if (root.active.length > 0 && !root.modified) root._send({ op: "refresh" }, true)
     }
 
-    // EasyEffects can be started or closed from elsewhere while a surface is open.
+    // EasyEffects can be started or closed, or its chain changed, from elsewhere while a surface is open: a poll
+    // reads only what tells whether anything moved, and the whole state comes back only when it did. A knob turned in
+    // EasyEffects' own window moves no part of that, so every sixth poll reads everything.
+    property int _polls: 0
     Timer {
-        interval: root.running ? 15000 : 4000
+        interval: root.running ? 5000 : 4000
         repeat: true
         running: root.users > 0 && root.enabled && !root.busy
-        onTriggered: root._send({ op: root.running ? "refresh" : "status" }, true)
+        onTriggered: {
+            root._polls = (root._polls + 1) % 6
+            root._send({ op: !root.running ? "status" : root._polls === 0 ? "refresh" : "poll" }, true)
+        }
     }
 }

@@ -12,4 +12,7 @@ IrisAudioCurve 1.0 IrisAudioCurve.qml
 IrisAudioScene 1.0 IrisAudioScene.qml
 IrisAudioEqGraph 1.0 IrisAudioEqGraph.qml
 IrisAudioMicPage 1.0 IrisAudioMicPage.qml
+IrisAudioMixerPage 1.0 IrisAudioMixerPage.qml
 IrisAudioAutoload 1.0 IrisAudioAutoload.qml
+IrisAudioQuick 1.0 IrisAudioQuick.qml
+IrisAudioLoudness 1.0 IrisAudioLoudness.qml

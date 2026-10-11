@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import qs.services
+import qs.services.deferred
 import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.widgets
@@ -54,6 +55,9 @@ Item {
             || root.grewSamples >= 2
             || root.atEndSamples >= 2)
     readonly property bool hasTimeline: root.hasPlayer && !root.liveStream && media.effectiveLength > 0
+    // A button beside the transport that opens the Audio Engine; the host closes itself and opens it on the signal.
+    property bool offersEngine: false
+    signal engineRequested()
     // Nothing playing: the card offers the music app you use most and opens it. Not on the lock, where nothing opens.
     property bool offersOpen: true
     readonly property bool offersMusic: root.offersOpen && !root.hasPlayer && IrisPieces.musicAppName.length > 0
@@ -193,7 +197,21 @@ Item {
                     }
                 }
             }
-            Item { Layout.fillWidth: true }
+            // Both sides fill alike, so the transport stays centred whether the shortcut shows or not.
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                IrisIconButton {
+                    visible: root.offersEngine
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    foreground: root.offersEngine && AudioEngine.effectsOn ? IrisStyle.identity.pink : root.inkSecondary
+                    materialIcon: "graphic_eq"
+                    iconSize: Math.round(18 * IrisStyle.density)
+                    Accessible.name: Translation.tr("Open the Audio Engine")
+                    onClicked: root.engineRequested()
+                }
+            }
         }
         IrisPlayerChips {
             id: playerChips

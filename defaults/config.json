@@ -2708,7 +2708,9 @@
         },
         "audio": {
             "enable": true,
-            "host": "overlay"
+            "host": "overlay",
+            "playerShortcut": true,
+            "startup": { "enable": false, "preset": "Default", "mic": "" }
         },
         "tray": {
             "hidePassive": false,
@@ -2764,6 +2766,7 @@
                 "visualizer": { "enable": false, "place": "right", "fx": 0.5, "fy": 0.5 },
                 "shellUpdate": { "enable": true, "place": "right", "fx": 0.5, "fy": 0.5 },
                 "anime": { "enable": false, "place": "right", "fx": 0.5, "fy": 0.5 },
+                "audioEngine": { "enable": false, "place": "right", "fx": 0.5, "fy": 0.5 },
                 "watching": { "enable": false, "place": "right", "fx": 0.5, "fy": 0.5 }
             },
             "edgeGap": 20,

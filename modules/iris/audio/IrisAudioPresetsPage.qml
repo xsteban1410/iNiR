@@ -47,7 +47,8 @@ ColumnLayout {
         unreadable_file: Translation.tr("That file could not be read."),
         unknown_format: Translation.tr("That file is not an iNiR or EasyEffects output preset."),
         needs_easyeffects: Translation.tr("EasyEffects must be running to read its own presets.")
-    })[AudioEngine.error] ?? ""
+    })[AudioEngine.error] ?? (AudioEngine.error.startsWith("internal_")
+        ? Translation.tr("Something went wrong there. The Audio Engine keeps running; try again.") : "")
 
     spacing: 6 * root.d
 
@@ -454,6 +455,73 @@ ColumnLayout {
                         materialIcon: "close"
                         Accessible.name: Translation.tr("Forget")
                         onClicked: AudioEngine.forget(other.modelData)
+                    }
+                }
+            }
+        }
+    }
+
+    // The sound each app brings while it plays, chosen under the app in Volume.
+    Caption { text: Translation.tr("Apps") }
+    Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: appColumn.implicitHeight
+        radius: IrisStyle.radiusTile
+        color: IrisStyle.readingCard
+        Column {
+            id: appColumn
+            width: parent.width
+            readonly property var names: Object.keys(AudioEngine.apps).sort()
+            IrisText {
+                visible: appColumn.names.length === 0
+                width: parent.width
+                leftPadding: 16 * root.d
+                rightPadding: 16 * root.d
+                topPadding: 14 * root.d
+                bottomPadding: 14 * root.d
+                text: Translation.tr("An app can bring its own sound while it plays: open it in Volume and pick one.")
+                color: IrisStyle.muted
+                font.pixelSize: IrisStyle.typeLabel
+                wrapMode: Text.WordWrap
+            }
+            Repeater {
+                model: appColumn.names
+                Item {
+                    id: appRow
+                    required property var modelData
+                    required property int index
+                    width: appColumn.width
+                    height: Math.round(46 * root.d)
+                    Rectangle {
+                        visible: appRow.index > 0
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16 * root.d
+                        anchors.right: parent.right
+                        height: 1
+                        color: IrisStyle.hairline
+                    }
+                    IrisText {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16 * root.d
+                        anchors.right: forgetApp.left
+                        anchors.rightMargin: 10 * root.d
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Translation.tr("%1 · %2").arg(String(appRow.modelData))
+                            .arg(Translation.tr(String(AudioEngine.apps[appRow.modelData] ?? "")))
+                        color: IrisStyle.subtext
+                        font.pixelSize: IrisStyle.typeLabel
+                        elide: Text.ElideRight
+                    }
+                    IrisIconButton {
+                        id: forgetApp
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12 * root.d
+                        anchors.verticalCenter: parent.verticalCenter
+                        materialIcon: "close"
+                        Accessible.name: Translation.tr("Forget")
+                        enabled: !AudioEngine.busy
+                        onClicked: AudioEngine.forgetApp(appRow.modelData)
                     }
                 }
             }

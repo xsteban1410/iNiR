@@ -2,7 +2,7 @@
 # Auto-generated from QML IpcHandler declarations + docs/IPC.md metadata.
 # Do not edit manually.
 # Regenerate: python3 scripts/lib/generate-ipc-registry.py
-# IPC.md hash: 8289d1d927c150e2
+# IPC.md hash: ff4ee8e0ecd41945
 # Targets: 75
 
 declare -gA IPC_TARGET_DESC=(
@@ -267,7 +267,7 @@ declare -gA IPC_FUNCTION_DESC=(
   ["audioEngine:close"]="Hide the Audio Engine"
   ["audioEngine:preset"]="Play a sound by name, built in (\`Default\`, \`Voice\`, \`Rock\`…) or one of yours"
   ["audioEngine:bypass"]="Hear everything without effects, or bring them back (EasyEffects' global bypass)"
-  ["audioEngine:page"]="Open it on one page: \`presets\`, \`equalizer\`, \`filter\`, \`bass_enhancer\`, \`exciter\`, \`autogain\`, \`limiter\`, \`microphone\` or \`add\`"
+  ["audioEngine:page"]="Open it on one page: \`presets\`, \`mixer\` (every device and app at its own volume), \`equalizer\`, \`filter\`, \`bass_enhancer\`, \`exciter\`, \`autogain\`, \`limiter\`, \`microphone\` or \`add\`"
   ["autostart:status"]="Return \`niri\\"
   ["autostart:addCommand"]="Append a managed \`spawn-sh-at-startup\` shell line"
   ["autostart:addApp"]="Append a managed \`gtk-launch <desktopId>\` entry"
@@ -853,7 +853,7 @@ declare -gA IPC_FUNCTION_VALUES=(
   ["altSwitcher:opens"]="inir niri status"
   ["audio:playEvent"]="batteryLow timerDone"
   ["audioEngine:preset"]="Default Voice Rock"
-  ["audioEngine:page"]="presets equalizer filter bass_enhancer exciter autogain limiter microphone add"
+  ["audioEngine:page"]="presets mixer equalizer filter bass_enhancer exciter autogain limiter microphone add"
   ["autostart:addCommand"]="spawn-sh-at-startup"
   ["background:widgetDesign"]="iris material individual instrument readout undo status"
   ["background:widgetMaterial"]="status match"
