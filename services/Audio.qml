@@ -29,8 +29,10 @@ Singleton {
     readonly property real ceiling: Math.min(root.hardMaxValue, (Config.options?.audio?.protection?.maxAllowed ?? 100) / 100)
     property string audioTheme: Config.options?.sounds?.theme ?? "freedesktop"
     property real value: sink?.audio?.volume ?? rawSink?.audio?.volume ?? 0
+    // A level meter (Quickshell's peak monitor, a loudness meter) watches the microphone; it does not record it.
     property bool micBeingAccessed: Pipewire.links.values.filter(link =>
         !link.source.isStream && !link.source.isSink && link.target.isStream
+        && String(link.target.properties?.["stream.monitor"] ?? "") !== "true"
     ).length > 0
 
     property bool _micMuted: false
@@ -366,6 +368,24 @@ Singleton {
 
         wpctlSetDefaultDevice.command = ["wpctl", "set-default", String(nodeId)]
         wpctlSetDefaultDevice.running = true
+    }
+
+    // Sends one app's stream to a device, the way pavucontrol does: WirePlumber follows `target.object` (the device's
+    // object.serial) in the default metadata, and EasyEffects only claims a stream when it appears, so it stays where
+    // it was sent. A null target hands the stream back to the default device.
+    function moveStream(stream, target): void {
+        const id = Number(stream?.id ?? 0)
+        if (!Number.isFinite(id) || id <= 0) return
+        if (!target) {
+            Quickshell.execDetached(["pw-metadata", "-n", "default", "-d", String(id), "target.object"])
+            Quickshell.execDetached(["pw-metadata", "-n", "default", "-d", String(id), "target.node"])
+            return
+        }
+        const targetId = Number(target.id ?? 0)
+        const serial = String(target.properties?.["object.serial"] ?? "")
+        if (!Number.isFinite(targetId) || targetId <= 0 || serial.length === 0) return
+        Quickshell.execDetached(["pw-metadata", "-n", "default", String(id), "target.node", String(targetId), "Spa:Id"])
+        Quickshell.execDetached(["pw-metadata", "-n", "default", String(id), "target.object", serial, "Spa:Id"])
     }
 
     function setDefaultSink(node) {
