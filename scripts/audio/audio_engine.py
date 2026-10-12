@@ -32,8 +32,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# output_probe.py sits beside this file; it is imported only where a device is identified, also under python -I.
 sys.path.insert(0, str(HERE))
-import output_probe  # noqa: E402 - beside this file, also under python -I
 FLATPAK_ID = "com.github.wwmm.easyeffects"
 PIPES = {
     "output": {"core": ["equalizer", "filter", "bass_enhancer", "exciter", "autogain", "limiter"],
@@ -145,6 +145,8 @@ class EasyEffects:
         self.socket_path = os.environ.get("EASYEFFECTS_SERVER_SOCKET") or f"{runtime}/EasyEffectsServer"
         self.sock = None
         self.buffer = b""
+        # Whether the EasyEffects behind the open connection is the Flatpak: asked once per connection.
+        self._flatpak = None
 
     # --- install and process -------------------------------------------------
 
@@ -161,19 +163,39 @@ class EasyEffects:
 
     @staticmethod
     def pid():
-        out = subprocess.run(["pgrep", "-n", "-x", "easyeffects"], capture_output=True, text=True)
-        value = out.stdout.strip()
-        return int(value) if value.isdigit() else None
+        """The newest easyeffects process, as `pgrep -n -x easyeffects` finds it, read from /proc without a process."""
+        newest, newest_start = None, -1
+        try:
+            entries = [entry.name for entry in os.scandir("/proc") if entry.name.isdigit()]
+        except OSError:
+            return None
+        for name in entries:
+            try:
+                with open(f"/proc/{name}/comm", "rb") as comm:
+                    if comm.read().strip() != b"easyeffects":
+                        continue
+                with open(f"/proc/{name}/stat", "rb") as stat_file:
+                    stat = stat_file.read()
+            except OSError:
+                continue
+            started = int(stat[stat.rfind(b")") + 2:].split()[19])
+            if started > newest_start:
+                newest, newest_start = int(name), started
+        return newest
 
     def running_flatpak(self) -> bool:
+        if self.sock is not None and self._flatpak is not None:
+            return self._flatpak
         pid = self.pid()
-        if pid is None:
-            return False
-        try:
-            environ = Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
-        except OSError:
-            return False
-        return f"FLATPAK_ID={FLATPAK_ID}".encode() in environ
+        found = False
+        if pid is not None:
+            try:
+                found = f"FLATPAK_ID={FLATPAK_ID}".encode() in Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
+            except OSError:
+                pass
+        if self.sock is not None:
+            self._flatpak = found
+        return found
 
     def config_file(self) -> Path:
         if self.running_flatpak():
@@ -252,6 +274,7 @@ class EasyEffects:
             return False
         self.sock = sock
         self.buffer = b""
+        self._flatpak = None
         return True
 
     def drop(self) -> None:
@@ -272,25 +295,37 @@ class EasyEffects:
             self.drop()
             return False
 
+    def ask_many(self, lines: list) -> list:
+        """Questions sent together: EasyEffects answers a connection's lines in order, so the replies are read back
+        in turn instead of waiting on each one."""
+        replies = []
+        for at in range(0, len(lines), 256):
+            batch = lines[at:at + 256]
+            if not self.send("\n".join(batch)):
+                break
+            try:
+                for _ in batch:
+                    while b"\n" not in self.buffer:
+                        chunk = self.sock.recv(65536)
+                        if not chunk:
+                            raise OSError("closed")
+                        self.buffer += chunk
+                    reply, self.buffer = self.buffer.split(b"\n", 1)
+                    replies.append(reply.decode(errors="replace").strip())
+            except OSError:
+                self.drop()
+                break
+        return replies + [None] * (len(lines) - len(replies))
+
     def ask(self, line: str):
-        if not self.send(line):
-            return None
-        try:
-            while b"\n" not in self.buffer:
-                chunk = self.sock.recv(4096)
-                if not chunk:
-                    self.drop()
-                    return None
-                self.buffer += chunk
-        except OSError:
-            self.drop()
-            return None
-        reply, self.buffer = self.buffer.split(b"\n", 1)
-        return reply.decode(errors="replace").strip()
+        return self.ask_many([line])[0]
+
+    def get_many(self, pipe: str, paths: list) -> list:
+        return [None if value is None or value.startswith("error_") else value
+                for value in self.ask_many([f"get_property:{pipe}:{path}" for path in paths])]
 
     def get(self, pipe: str, path: str):
-        value = self.ask(f"get_property:{pipe}:{path}")
-        return None if value is None or value.startswith("error_") else value
+        return self.get_many(pipe, [path])[0]
 
     def set(self, pipe: str, path: str, value) -> bool:
         if isinstance(value, bool):
@@ -349,6 +384,7 @@ class Engine:
         self.state_file = state_file
         schema = json.loads((HERE / "ee-schema.json").read_text(encoding="utf-8"))
         self.schema = schema["plugins"]
+        self._channel = {p["name"]: p for p in self.schema["equalizer"]["channel"]}
         self.builtins = json.loads((HERE / "audio-presets.json").read_text(encoding="utf-8"))
         self.state = self._read_state()
         self._seen = None
@@ -403,19 +439,21 @@ class Engine:
         kind, index = plugin_id.split("#", 1)
         return f"{kind}:{index}"
 
-    def _exists(self, pipe: str, plugin_id: str) -> bool:
-        return kind_of(plugin_id) in self.schema and "#" in plugin_id \
-            and self.ee.get(pipe, f"{self._path(plugin_id)}:bypass") is not None
+    def _existing(self, pipe: str, ids: list) -> list:
+        """The effects among `ids` that EasyEffects has loaded."""
+        ids = [p for p in ids if "#" in p and kind_of(p) in self.schema]
+        found = self.ee.get_many(pipe, [f"{self._path(p)}:bypass" for p in ids])
+        return [p for p, value in zip(ids, found) if value is not None]
 
     def chain(self, pipe: str = "output") -> list:
         """A chain. Once the engine has loaded one, the chain it wrote is the truth: EasyEffects writes
         easyeffectsrc lazily, so right after a load it still lists the chain before it."""
         own = self._pipe(pipe)
-        known = [p for p in (own.get("chain") or []) if self._exists(pipe, p)]
+        known = self._existing(pipe, own.get("chain") or [])
         core = own.get("core") or {}
         if known and all(core.get(kind) in known for kind in PIPES[pipe]["core"]):
             return known
-        return [p for p in self._config_list(pipe, "plugins") if self._exists(pipe, p)]
+        return self._existing(pipe, self._config_list(pipe, "plugins"))
 
     def _parse(self, prop: dict, raw):
         if raw is None:
@@ -439,28 +477,27 @@ class Engine:
     def read_plugin(self, plugin_id: str, full: bool = False, pipe: str = "output") -> dict:
         kind = kind_of(plugin_id)
         path = self._path(plugin_id)
-        values = {}
-        for prop in self.schema[kind]["props"]:
-            values[prop["name"]] = self._parse(prop, self.ee.get(pipe, f"{path}:{prop['name']}"))
+        props = self.schema[kind]["props"]
+        raw = self.ee.get_many(pipe, [f"{path}:{prop['name']}" for prop in props])
+        values = {prop["name"]: self._parse(prop, value) for prop, value in zip(props, raw)}
         entry = {"id": plugin_id, "kind": kind, "label": self.schema[kind]["label"],
                  "enabled": not values.pop("bypass", False), "values": values,
                  "defaults": self.defaults(kind)}
         if kind == "equalizer":
             count = int(values.get("numBands", 0))
-            channel = {p["name"]: p for p in self.schema["equalizer"]["channel"]}
+            channel = self._channel
+            # The left side alone, unless the whole of both sides is asked for.
+            keys = [(side, f"band{i}{name}") for side in (("left", "right") if full else ("left",))
+                    for i in range(count) for name in (BAND_PROPS if full else ("Frequency", "Gain"))]
+            raw = self.ee.get_many(pipe, [f"{path}:{side}:{name}" for side, name in keys])
+            sides = {"left": {}, "right": {}}
+            for (side, name), value in zip(keys, raw):
+                sides[side][name] = self._parse(channel[name], value)
             if full:
-                entry["channels"] = {}
-                for side in ("left", "right"):
-                    entry["channels"][side] = {
-                        f"band{i}{name}": self._parse(channel[f"band{i}{name}"],
-                                                      self.ee.get(pipe, f"{path}:{side}:band{i}{name}"))
-                        for i in range(count) for name in BAND_PROPS}
-            entry["bands"] = [{
-                "frequency": self._parse(channel[f"band{i}Frequency"],
-                                         self.ee.get(pipe, f"{path}:left:band{i}Frequency")),
-                "gain": self._parse(channel[f"band{i}Gain"],
-                                    self.ee.get(pipe, f"{path}:left:band{i}Gain")),
-            } for i in range(count)]
+                entry["channels"] = sides
+            left = sides["left"]
+            entry["bands"] = [{"frequency": left[f"band{i}Frequency"], "gain": left[f"band{i}Gain"]}
+                              for i in range(count)]
         return entry
 
     def core_ids(self, chain: list, pipe: str = "output") -> dict:
@@ -515,6 +552,7 @@ class Engine:
         for item in plan:
             self.ee.set(pipe, f"{self._path(item['id'])}:bypass", not item.get("enabled", False))
         if order:
+            # Answered only once every value sent before it is in.
             self.ee.get(pipe, f"{self._path(order[0])}:bypass")
         self._pipe(pipe)["chain"] = order
         self._write_state()
@@ -547,7 +585,9 @@ class Engine:
         deadline = time.monotonic() + 4
         pending = list(order)
         while pending and time.monotonic() < deadline:
-            pending = [p for p in pending if self.ee.get(pipe, f"{self._path(p)}:bypass") is None]
+            # Any effect EasyEffects has, known here or not: an imported chain can hold either.
+            found = self.ee.get_many(pipe, [f"{self._path(p)}:bypass" for p in pending])
+            pending = [p for p, value in zip(pending, found) if value is None]
             if pending:
                 time.sleep(0.05)
         return not pending
@@ -727,10 +767,13 @@ class Engine:
         core = self.core_ids(self.chain())
         if not core:
             return
-        path = self._path(core["equalizer"])
-        count = int(float(self.ee.get("output", f"{path}:numBands") or 0))
-        gains = [float(self.ee.get("output", f"{path}:left:band{i}Gain") or 0) for i in range(count)]
-        self.ee.set("output", f"{path}:inputGain", round(-max([0.0] + gains), 2))
+        self._keep_headroom(core["equalizer"], "output")
+
+    def _keep_headroom(self, plugin_id: str, pipe: str) -> None:
+        path = self._path(plugin_id)
+        count = int(float(self.ee.get(pipe, f"{path}:numBands") or 0))
+        gains = [float(g or 0) for g in self.ee.get_many(pipe, [f"{path}:left:band{i}Gain" for i in range(count)])]
+        self.ee.set(pipe, f"{path}:inputGain", round(-max([0.0] + gains), 2))
 
     # --- reports ---------------------------------------------------------------
 
@@ -787,12 +830,14 @@ class Engine:
                 "micTuningFollow": self.state.get("micTuningFollow", True)}
 
     def report(self) -> dict:
-        if self.state.get("presets") != self.preset_names() or self.state.get("micPresets") != self.preset_names("input"):
+        # Each folder of presets is read once per report.
+        catalog = {pipe: self._catalog(pipe) for pipe in PIPES}
+        if self.state.get("presets") != catalog["output"][0] or self.state.get("micPresets") != catalog["input"][0]:
             self._write_state()
         self._seen = self.signature()
-        if not self.ee.connect():
+        if not self._seen[0]:
             return {"type": "state", "running": False, "active": self.state.get("active", ""), **self._memory()}
-        chain = self.chain()
+        chain, mic_chain, bypass = self._seen[1], self._seen[2], self._seen[3]
         core = self.core_ids(chain)
         extras = [self.read_plugin(p) for p in chain if p not in core.values()]
         core_entries = self._core_report("output", core)
@@ -802,20 +847,19 @@ class Engine:
         for entry in extras:
             entry["props"] = [p for p in self.schema[entry["kind"]]["props"]
                               if p["name"] != "bypass" and p["type"] != "string"]
-        mic_chain = self.chain("input")
         mic_core = self.core_ids(mic_chain, "input")
         if not mic_core and self._kept_core(mic_chain, "input"):
             mic_core = self.ensure_core("input")
         return {"type": "state", "running": True, "adopted": bool(core),
                 "core": core_entries, "extras": extras,
                 "active": self.state.get("active", ""), "modified": modified,
-                "bypass": self.ee.bypassed(), **self._memory(),
+                "bypass": bypass, **self._memory(),
                 "builtins": ["Default"] + list(self.builtins["presets"].keys()),
-                "presets": self.preset_names(), "presetInfo": self.preset_info(),
+                "presets": catalog["output"][0], "presetInfo": catalog["output"][1],
                 "mic": {"adopted": bool(mic_core), "core": self._core_report("input", mic_core),
                         "active": self._pipe("input").get("active", ""),
                         "builtins": list(self.builtins["microphone"].keys()),
-                        "presets": self.preset_names("input"), "presetInfo": self.preset_info("input")}}
+                        "presets": catalog["input"][0], "presetInfo": catalog["input"][1]}}
 
     # --- presets ----------------------------------------------------------------
 
@@ -843,16 +887,17 @@ class Engine:
         return out
 
     def preset_names(self, pipe: str = "output") -> list:
-        return sorted((data["name"] for _, data in self._preset_files(pipe)), key=str.casefold)
+        return self._catalog(pipe)[0]
 
-    def preset_info(self, pipe: str = "output") -> dict:
-        """What each of the person's presets holds: the sound it started from, and how many effects it turns on."""
+    def _catalog(self, pipe: str = "output") -> tuple:
+        """The person's presets by name, and what each holds: the sound it started from, how many effects it turns on."""
+        files = self._preset_files(pipe)
         info = {}
-        for _, data in self._preset_files(pipe):
+        for _, data in files:
             on = [kind for kind, entry in (data.get("core") or {}).items() if (entry or {}).get("enabled")]
             on += [extra.get("kind") for extra in (data.get("extras") or []) if extra.get("enabled")]
             info[data["name"]] = {"base": data.get("base") or "", "on": len(on)}
-        return info
+        return sorted((data["name"] for _, data in files), key=str.casefold), info
 
     def _find_preset(self, name: str, pipe: str = "output"):
         for path, data in self._preset_files(pipe):
@@ -1320,6 +1365,7 @@ class Engine:
 
     def mic_source(self) -> str:
         """The microphone EasyEffects records from: the one a measurement listens to."""
+        import output_probe
         configured = self._config_list("input", "inputDevice")
         here = output_probe.identify_source(configured[0] if configured else "")
         return here.get("source", "") if here.get("found") else ""
@@ -1430,6 +1476,7 @@ class Engine:
         Default."""
         if not self.state.get(TUNED[pipe]["follow"], True) or not self._tuned_list(pipe):
             return
+        import output_probe
         key = TUNED[pipe]["device"]
         if pipe == "input":
             here = output_probe.identify_source(str(device or "") or self.mic_source())
@@ -1596,8 +1643,7 @@ class Engine:
             self.headroom_follow()
             return
         # The voice's equalizer always keeps its headroom: a boosted band never clips what follows it.
-        gains = [float(self.ee.get(pipe, f"{path}:left:band{i}Gain") or 0) for i in range(count)]
-        self.ee.set(pipe, f"{path}:inputGain", round(-max([0.0] + gains), 2))
+        self._keep_headroom(core["equalizer"], pipe)
 
     def set_enabled(self, request: dict) -> None:
         pipe, plugin_id = self.target(request)
@@ -1667,7 +1713,8 @@ class Engine:
             expected = [p for p in (self._pipe(pipe).get("chain") or self._config_list(pipe, "plugins"))
                         if "#" in p and kind_of(p) in self.schema]
             while expected and time.monotonic() < deadline:
-                expected = [p for p in expected if self.ee.get(pipe, f"{self._path(p)}:bypass") is None]
+                loaded = self._existing(pipe, expected)
+                expected = [p for p in expected if p not in loaded]
                 if expected:
                     time.sleep(0.1)
 
