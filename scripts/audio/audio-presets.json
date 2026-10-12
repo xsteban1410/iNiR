@@ -435,53 +435,365 @@
     "mode": 0,
     "gainBoost": false
    }
+  },
+  "Games": {
+   "equalizer": {
+    "inputGain": -4,
+    "gains": [
+     3,
+     3,
+     1,
+     0,
+     -1,
+     0,
+     2,
+     3,
+     2,
+     1
+    ]
+   },
+   "filter": {
+    "type": 1,
+    "frequency": 20,
+    "slope": 0
+   },
+   "bass_enhancer": {
+    "amount": 3,
+    "harmonics": 8.5,
+    "scope": 100,
+    "blend": 0,
+    "floor": 20,
+    "floorActive": true
+   },
+   "exciter": {
+    "amount": 3,
+    "harmonics": 8,
+    "scope": 6000,
+    "blend": 0,
+    "ceil": 16000,
+    "ceilActive": false
+   },
+   "autogain": {
+    "target": -16,
+    "reference": 3,
+    "maximumHistory": 10,
+    "silenceThreshold": -70
+   },
+   "limiter": {
+    "threshold": -1,
+    "lookahead": 5,
+    "attack": 2,
+    "release": 10,
+    "oversampling": 6,
+    "mode": 0,
+    "gainBoost": false
+   }
+  },
+  "Competitive": {
+   "equalizer": {
+    "inputGain": -5,
+    "gains": [
+     -4,
+     -3,
+     -2,
+     -1,
+     0,
+     1,
+     3,
+     5,
+     3,
+     0
+    ]
+   },
+   "filter": {
+    "type": 1,
+    "frequency": 60,
+    "slope": 1
+   },
+   "bass_enhancer": {
+    "amount": 0,
+    "harmonics": 8.5,
+    "scope": 100,
+    "blend": 0,
+    "floor": 20,
+    "floorActive": false
+   },
+   "exciter": {
+    "amount": 2,
+    "harmonics": 8,
+    "scope": 4000,
+    "blend": 0,
+    "ceil": 12000,
+    "ceilActive": true
+   },
+   "autogain": {
+    "target": -14,
+    "reference": 1,
+    "maximumHistory": 6,
+    "silenceThreshold": -60
+   },
+   "limiter": {
+    "threshold": -1,
+    "lookahead": 5,
+    "attack": 1,
+    "release": 5,
+    "oversampling": 6,
+    "mode": 0,
+    "gainBoost": false
+   }
+  },
+  "Movies": {
+   "equalizer": {
+    "inputGain": -4,
+    "gains": [
+     4,
+     3,
+     1,
+     -1,
+     -1,
+     1,
+     3,
+     2,
+     1,
+     1
+    ]
+   },
+   "filter": {
+    "type": 1,
+    "frequency": 20,
+    "slope": 0
+   },
+   "bass_enhancer": {
+    "amount": 4,
+    "harmonics": 8.5,
+    "scope": 90,
+    "blend": 0,
+    "floor": 20,
+    "floorActive": true
+   },
+   "exciter": {
+    "amount": 1.5,
+    "harmonics": 8,
+    "scope": 7000,
+    "blend": 0,
+    "ceil": 16000,
+    "ceilActive": false
+   },
+   "autogain": {
+    "target": -18,
+    "reference": 2,
+    "maximumHistory": 15,
+    "silenceThreshold": -60
+   },
+   "limiter": {
+    "threshold": -1,
+    "lookahead": 10,
+    "attack": 5,
+    "release": 20,
+    "oversampling": 6,
+    "mode": 0,
+    "gainBoost": false
+   }
+  },
+  "Night": {
+   "equalizer": {
+    "inputGain": -3,
+    "gains": [
+     -4,
+     -2,
+     0,
+     0,
+     1,
+     2,
+     3,
+     2,
+     0,
+     -2
+    ]
+   },
+   "filter": {
+    "type": 1,
+    "frequency": 80,
+    "slope": 1
+   },
+   "bass_enhancer": {
+    "amount": 0,
+    "harmonics": 8.5,
+    "scope": 100,
+    "blend": 0,
+    "floor": 20,
+    "floorActive": false
+   },
+   "exciter": {
+    "amount": 0,
+    "harmonics": 8.5,
+    "scope": 7500,
+    "blend": 0,
+    "ceil": 16000,
+    "ceilActive": false
+   },
+   "autogain": {
+    "target": -20,
+    "reference": 1,
+    "maximumHistory": 6,
+    "silenceThreshold": -50
+   },
+   "limiter": {
+    "threshold": -6,
+    "lookahead": 10,
+    "attack": 2,
+    "release": 20,
+    "oversampling": 6,
+    "mode": 0,
+    "gainBoost": false
+   }
+  },
+  "Electronic": {
+   "equalizer": {
+    "inputGain": -6,
+    "gains": [
+     6,
+     5,
+     2,
+     0,
+     -1,
+     0,
+     1,
+     2,
+     3,
+     3
+    ]
+   },
+   "filter": {
+    "type": 1,
+    "frequency": 20,
+    "slope": 0
+   },
+   "bass_enhancer": {
+    "amount": 5,
+    "harmonics": 8.5,
+    "scope": 90,
+    "blend": 0,
+    "floor": 20,
+    "floorActive": true
+   },
+   "exciter": {
+    "amount": 3,
+    "harmonics": 8,
+    "scope": 7000,
+    "blend": 0,
+    "ceil": 16000,
+    "ceilActive": false
+   },
+   "autogain": {
+    "target": -14,
+    "reference": 3,
+    "maximumHistory": 15,
+    "silenceThreshold": -70
+   },
+   "limiter": {
+    "threshold": -1,
+    "lookahead": 5,
+    "attack": 2,
+    "release": 10,
+    "oversampling": 6,
+    "mode": 0,
+    "gainBoost": false
+   }
+  },
+  "Hip-hop": {
+   "equalizer": {
+    "inputGain": -6,
+    "gains": [
+     6,
+     6,
+     3,
+     1,
+     -1,
+     -1,
+     1,
+     1,
+     2,
+     2
+    ]
+   },
+   "filter": {
+    "type": 1,
+    "frequency": 20,
+    "slope": 0
+   },
+   "bass_enhancer": {
+    "amount": 6,
+    "harmonics": 8.5,
+    "scope": 80,
+    "blend": 0,
+    "floor": 20,
+    "floorActive": true
+   },
+   "exciter": {
+    "amount": 2,
+    "harmonics": 8,
+    "scope": 6500,
+    "blend": 0,
+    "ceil": 16000,
+    "ceilActive": false
+   },
+   "autogain": {
+    "target": -14,
+    "reference": 3,
+    "maximumHistory": 15,
+    "silenceThreshold": -70
+   },
+   "limiter": {
+    "threshold": -1,
+    "lookahead": 5,
+    "attack": 2,
+    "release": 10,
+    "oversampling": 6,
+    "mode": 0,
+    "gainBoost": false
+   }
   }
  },
  "microphone": {
-  "Off": {
-   "filter": {
-    "enabled": false
-   },
-   "rnnoise": {
-    "enabled": false
-   },
-   "gate": {
-    "enabled": false
-   },
-   "autotune": {
-    "enabled": false
-   },
-   "compressor": {
-    "enabled": false
-   },
-   "limiter": {
-    "enabled": false
-   }
-  },
+  "Off": {},
   "Calls": {
    "filter": {
-    "enabled": true,
     "type": 1,
     "frequency": 80,
     "slope": 1
    },
    "rnnoise": {
-    "enabled": true,
     "enableVad": true,
     "vadThres": 50,
     "wet": 0,
     "release": 20
    },
    "gate": {
-    "enabled": true,
     "curveThreshold": -50,
     "curveZone": -6,
     "reduction": -15,
     "attack": 5,
     "release": 150
    },
+   "equalizer": {
+    "gains": [
+     -6,
+     -4,
+     -2,
+     0,
+     0,
+     1,
+     2,
+     2,
+     1,
+     -2
+    ]
+   },
+   "autotune": {
+    "style": "subtle"
+   },
    "compressor": {
-    "enabled": true,
     "threshold": -20,
     "ratio": 3,
     "knee": -6,
@@ -490,8 +802,59 @@
     "makeup": 4
    },
    "limiter": {
-    "enabled": true,
     "threshold": -3,
+    "lookahead": 5,
+    "attack": 2,
+    "release": 10,
+    "gainBoost": false
+   }
+  },
+  "Podcast": {
+   "filter": {
+    "type": 1,
+    "frequency": 75,
+    "slope": 1
+   },
+   "rnnoise": {
+    "enableVad": false,
+    "vadThres": 50,
+    "wet": 0,
+    "release": 20
+   },
+   "gate": {
+    "curveThreshold": -50,
+    "curveZone": -6,
+    "reduction": -18,
+    "attack": 5,
+    "release": 180
+   },
+   "equalizer": {
+    "gains": [
+     -8,
+     -3,
+     2,
+     1,
+     -1.5,
+     0,
+     1.5,
+     2.5,
+     1,
+     -1
+    ]
+   },
+   "autotune": {
+    "style": "subtle"
+   },
+   "compressor": {
+    "threshold": -22,
+    "ratio": 3.5,
+    "knee": -6,
+    "attack": 12,
+    "release": 150,
+    "makeup": 6
+   },
+   "limiter": {
+    "threshold": -1.5,
     "lookahead": 5,
     "attack": 2,
     "release": 10,
@@ -500,27 +863,40 @@
   },
   "Streaming": {
    "filter": {
-    "enabled": true,
     "type": 1,
     "frequency": 90,
     "slope": 1
    },
    "rnnoise": {
-    "enabled": true,
     "enableVad": false,
     "wet": 0,
     "release": 20
    },
    "gate": {
-    "enabled": true,
     "curveThreshold": -45,
     "curveZone": -6,
     "reduction": -24,
     "attack": 5,
     "release": 120
    },
+   "equalizer": {
+    "gains": [
+     -6,
+     -2,
+     1,
+     0,
+     -1,
+     0,
+     2,
+     3,
+     2,
+     0
+    ]
+   },
+   "autotune": {
+    "style": "subtle"
+   },
    "compressor": {
-    "enabled": true,
     "threshold": -18,
     "ratio": 4,
     "knee": -6,
@@ -529,8 +905,59 @@
     "makeup": 6
    },
    "limiter": {
-    "enabled": true,
     "threshold": -1,
+    "lookahead": 5,
+    "attack": 2,
+    "release": 10,
+    "gainBoost": false
+   }
+  },
+  "Gaming": {
+   "filter": {
+    "type": 1,
+    "frequency": 110,
+    "slope": 2
+   },
+   "rnnoise": {
+    "enableVad": true,
+    "vadThres": 60,
+    "wet": 0,
+    "release": 20
+   },
+   "gate": {
+    "curveThreshold": -44,
+    "curveZone": -6,
+    "reduction": -30,
+    "attack": 5,
+    "release": 120
+   },
+   "equalizer": {
+    "gains": [
+     -8,
+     -5,
+     -2,
+     0,
+     0,
+     1.5,
+     3,
+     3,
+     1,
+     -3
+    ]
+   },
+   "autotune": {
+    "style": "subtle"
+   },
+   "compressor": {
+    "threshold": -20,
+    "ratio": 4,
+    "knee": -6,
+    "attack": 5,
+    "release": 100,
+    "makeup": 6
+   },
+   "limiter": {
+    "threshold": -2,
     "lookahead": 5,
     "attack": 2,
     "release": 10,
@@ -539,28 +966,41 @@
   },
   "Noisy room": {
    "filter": {
-    "enabled": true,
     "type": 1,
     "frequency": 100,
     "slope": 2
    },
    "rnnoise": {
-    "enabled": true,
     "enableVad": true,
     "vadThres": 70,
     "wet": 0,
     "release": 40
    },
    "gate": {
-    "enabled": true,
     "curveThreshold": -40,
     "curveZone": -6,
     "reduction": -30,
     "attack": 3,
     "release": 200
    },
+   "equalizer": {
+    "gains": [
+     -10,
+     -6,
+     -3,
+     0,
+     1,
+     2,
+     3,
+     2,
+     0,
+     -4
+    ]
+   },
+   "autotune": {
+    "style": "subtle"
+   },
    "compressor": {
-    "enabled": true,
     "threshold": -20,
     "ratio": 3,
     "knee": -6,
@@ -569,8 +1009,111 @@
     "makeup": 4
    },
    "limiter": {
-    "enabled": true,
     "threshold": -3,
+    "lookahead": 5,
+    "attack": 2,
+    "release": 10,
+    "gainBoost": false
+   }
+  },
+  "Singing": {
+   "filter": {
+    "type": 1,
+    "frequency": 70,
+    "slope": 0
+   },
+   "rnnoise": {
+    "enableVad": false,
+    "vadThres": 50,
+    "wet": 0,
+    "release": 20
+   },
+   "gate": {
+    "curveThreshold": -55,
+    "curveZone": -6,
+    "reduction": -12,
+    "attack": 5,
+    "release": 250
+   },
+   "equalizer": {
+    "gains": [
+     -6,
+     -2,
+     0,
+     0,
+     -1,
+     0,
+     1,
+     2,
+     3,
+     2
+    ]
+   },
+   "autotune": {
+    "style": "natural"
+   },
+   "compressor": {
+    "threshold": -18,
+    "ratio": 2.5,
+    "knee": -6,
+    "attack": 15,
+    "release": 200,
+    "makeup": 4
+   },
+   "limiter": {
+    "threshold": -1,
+    "lookahead": 5,
+    "attack": 2,
+    "release": 10,
+    "gainBoost": false
+   }
+  },
+  "Robot": {
+   "filter": {
+    "type": 1,
+    "frequency": 150,
+    "slope": 2
+   },
+   "rnnoise": {
+    "enableVad": true,
+    "vadThres": 50,
+    "wet": 0,
+    "release": 20
+   },
+   "gate": {
+    "curveThreshold": -45,
+    "curveZone": -6,
+    "reduction": -30,
+    "attack": 5,
+    "release": 100
+   },
+   "equalizer": {
+    "gains": [
+     -10,
+     -6,
+     -2,
+     0,
+     2,
+     3,
+     3,
+     1,
+     -2,
+     -6
+    ]
+   },
+   "autotune": {
+    "style": "robot"
+   },
+   "compressor": {
+    "threshold": -20,
+    "ratio": 5,
+    "knee": -6,
+    "attack": 3,
+    "release": 80,
+    "makeup": 7
+   },
+   "limiter": {
+    "threshold": -2,
     "lookahead": 5,
     "attack": 2,
     "release": 10,

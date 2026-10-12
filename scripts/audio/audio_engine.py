@@ -11,6 +11,10 @@ chain is always loaded bypassed and every value is sent again afterwards.
 Each chain's core effects sit in front of whatever chain the user already had;
 that chain is kept, with its values.
 
+Tuned outputs (at most five, each with its own name, so speakers and headphones on
+one sink never write over each other) come from output_probe.py; while one is
+chosen, every built-in sound is shaped to it.
+
 Usage:
     audio_engine.py --presets-dir DIR --state-file FILE
 """
@@ -28,11 +32,13 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import output_probe  # noqa: E402 - beside this file, also under python -I
 FLATPAK_ID = "com.github.wwmm.easyeffects"
 PIPES = {
     "output": {"core": ["equalizer", "filter", "bass_enhancer", "exciter", "autogain", "limiter"],
                "section": "StreamOutputs", "preset": "iNiR Audio Engine"},
-    "input": {"core": ["filter", "rnnoise", "gate", "autotune", "compressor", "limiter"],
+    "input": {"core": ["filter", "rnnoise", "gate", "equalizer", "autotune", "compressor", "limiter"],
               "section": "StreamInputs", "preset": "iNiR Microphone"},
 }
 CORE = PIPES["output"]["core"]
@@ -49,10 +55,27 @@ ISO_32 = [16, 20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 5
           1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000]
 ISO_10 = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
 NAME_MAX = 64
+OUTPUTS_MAX = 5
+OUTPUT_NAME_MAX = 32
+# Where each chain keeps its tuned devices in the state, and what names the device.
+TUNED = {"output": {"list": "outputs", "choice": "tuning", "follow": "tuningFollow", "prefix": "out", "device": "sink"},
+         "input": {"list": "inputs", "choice": "micTuning", "follow": "micTuningFollow", "prefix": "in",
+                   "device": "source"}}
+
+
+def finite(value):
+    """JSON has no NaN or infinity, and the shell's parser refuses a line that carries one: such a number is null."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: finite(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [finite(v) for v in value]
+    return value
 
 
 def emit(event: dict) -> None:
-    sys.stdout.write(json.dumps(event, separators=(",", ":")) + "\n")
+    sys.stdout.write(json.dumps(finite(event), separators=(",", ":")) + "\n")
     sys.stdout.flush()
 
 
@@ -350,9 +373,10 @@ class Engine:
     def _write_state(self) -> None:
         # The person's presets, so Settings can offer them while the helper is not running.
         self.state["presets"] = self.preset_names()
+        self.state["micPresets"] = self.preset_names("input")
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.state_file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.state, indent=1) + "\n", encoding="utf-8")
+        tmp.write_text(json.dumps(finite(self.state), indent=1) + "\n", encoding="utf-8")
         tmp.replace(self.state_file)
 
     def _pipe(self, pipe: str) -> dict:
@@ -545,23 +569,61 @@ class Engine:
                             f"band{i}Type": 1, f"band{i}Mute": False, f"band{i}Solo": False})
         return values, {"left": dict(channel), "right": dict(channel)}
 
-    def _builtin_values(self, name: str, kind: str, band_count: int) -> tuple:
+    def _builtin_values(self, name: str, kind: str, band_count: int, profile=None) -> tuple:
         preset = self.builtins["presets"][name][kind]
         if kind == "equalizer":
+            if profile:
+                return self._eq_values(*self._tuned_gains(name, profile), band_count)
             return self._eq_values(preset["gains"], preset["inputGain"], band_count)
-        return dict(preset), None
+        return (self._shaped(name, kind, preset, profile) if profile else dict(preset)), None
 
-    def _mic_values(self, name: str, kind: str):
-        """A microphone sound's switch and values for one effect; None where the sound leaves it alone."""
-        if kind not in self.builtins["microphone"][name]:
+    def _mic_values(self, name: str, kind: str, profile=None):
+        """A microphone sound's values (and the equalizer's channels) for one effect, shaped to a tuned microphone;
+        None where the sound leaves the effect alone."""
+        preset = self.builtins["microphone"][name].get(kind)
+        if preset is None:
             return None
-        preset = dict(self.builtins["microphone"][name][kind])
-        return bool(preset.pop("enabled", False)), preset
-
-    def _mic_start(self, kind: str) -> dict:
+        preset = dict(preset)
         if kind == "autotune":
-            return dict(self.builtins["autotune"]["styles"]["natural"])
-        return self._mic_values("Calls", kind)[1]
+            return dict(self.builtins["autotune"]["styles"][preset.get("style", "natural")]), None
+        if kind == "equalizer":
+            gains = [float(g) for g in preset["gains"]]
+            if profile:
+                correction = list(profile.get("correction") or []) + [0.0] * len(ISO_10)
+                gains = [max(-12.0, min(9.0, g + float(c))) for g, c in zip(gains, correction)]
+            return self._eq_values(gains, min(0.0, -max([0.0] + gains)), 10)
+        return (self._mic_tuned(kind, preset, profile) if profile else preset), None
+
+    def _mic_start(self, kind: str) -> tuple:
+        return self._mic_values("Calls", kind)
+
+    def _mic_needs(self, profile) -> set:
+        """The microphone effects a tuned microphone turns on whatever sound plays."""
+        if not profile:
+            return set()
+        needs = {"filter", "equalizer", "compressor", "limiter"}
+        noise = profile.get("noise")
+        if noise is not None and noise > -62:
+            needs.add("gate")
+        if noise is not None and noise > -55:
+            needs.add("rnnoise")
+        return needs
+
+    @staticmethod
+    def _mic_tuned(kind: str, values: dict, profile) -> dict:
+        """A microphone sound's values for one effect on a tuned microphone: the cut under the voice's own pitch,
+        the gate between its noise and its speech, the compressor where its speech sits."""
+        values = dict(values)
+        if kind == "filter" and profile.get("cut"):
+            values["frequency"] = max(float(values.get("frequency", 20)), float(profile["cut"]))
+        elif kind == "gate" and profile.get("gate") is not None:
+            values["curveThreshold"] = max(-80.0, min(-20.0, float(profile["gate"])))
+        elif kind == "compressor" and profile.get("speech") is not None:
+            # The built-in sounds are set for speech around -26 dBFS: they follow where this voice really sits.
+            shift = max(-12.0, min(12.0, float(profile["speech"]) + 26))
+            values["threshold"] = round(max(-60.0, min(0.0, float(values["threshold"]) + shift)), 1)
+            values["makeup"] = round(max(0.0, min(18.0, float(values["makeup"]) - shift * 0.8)), 1)
+        return values
 
     def snapshot(self, chain: list, pipe: str = "output") -> list:
         return [self.read_plugin(p, full=True, pipe=pipe) for p in chain]
@@ -587,10 +649,7 @@ class Engine:
             taken.append(core[kind])
         plan = []
         for kind in PIPES[pipe]["core"]:
-            if pipe == "output":
-                values, channels = self._builtin_values("Flat", kind, 10)
-            else:
-                values, channels = self._mic_start(kind), None
+            values, channels = self._start_values(kind, pipe)
             plan.append({"id": core[kind], "enabled": False, "values": values, "channels": channels})
         plan += existing
         self._pipe(pipe)["core"] = core
@@ -614,8 +673,8 @@ class Engine:
                 continue
             core[kind] = self._free_id(kind, taken)
             taken.append(core[kind])
-            values = self._mic_start(kind) if pipe == "input" else self._builtin_values("Flat", kind, 10)[0]
-            plan.append({"id": core[kind], "enabled": False, "values": values, "channels": None})
+            values, channels = self._start_values(kind, pipe)
+            plan.append({"id": core[kind], "enabled": False, "values": values, "channels": channels})
         plan += self.snapshot([p for p in chain if p not in kept.values()], pipe)
         self._pipe(pipe)["core"] = core
         if not self.rebuild(plan, pipe):
@@ -690,19 +749,16 @@ class Engine:
         for kind in PIPES[pipe]["core"]:
             if core:
                 entry = self.read_plugin(core[kind], pipe=pipe)
-            elif pipe == "output":
-                values, channels = self._builtin_values("Flat", kind, 10)
+            else:
+                start, channels = self._start_values(kind, pipe)
+                values = dict(self.defaults(kind))
+                values.update(start)
                 entry = {"id": "", "kind": kind, "label": self.schema[kind]["label"],
                          "enabled": False, "values": values, "defaults": self.defaults(kind)}
                 if kind == "equalizer":
                     left = channels["left"]
                     entry["bands"] = [{"frequency": left[f"band{i}Frequency"],
                                        "gain": left[f"band{i}Gain"]} for i in range(10)]
-            else:
-                values = dict(self.defaults(kind))
-                values.update(self._mic_start(kind))
-                entry = {"id": "", "kind": kind, "label": self.schema[kind]["label"],
-                         "enabled": False, "values": values, "defaults": self.defaults(kind)}
             entry["needs"] = NEEDS.get(kind, "")
             if kind == "autotune":
                 entry["tune"] = self.tune_of(entry["values"])
@@ -714,7 +770,7 @@ class Engine:
         if not self.ee.connect():
             return [False]
         return [True, self.chain(), self.chain("input"), self.ee.bypassed(), self.state.get("active", ""),
-                self._pipe("input").get("active", "")]
+                self._pipe("input").get("active", ""), self.state.get("tuning", ""), self.state.get("micTuning", "")]
 
     def poll(self) -> bool:
         """Whether anything a surface shows may have changed since the last report."""
@@ -723,10 +779,15 @@ class Engine:
     def _memory(self) -> dict:
         return {"devices": self.state.get("devices", {}), "apps": self.state.get("apps", {}),
                 "excluded": {pipe: self.blocklist(pipe) for pipe in PIPES},
-                "headroom": self.state.get("headroom", True)}
+                "headroom": self.state.get("headroom", True), "outputs": self._tuned_list("output"),
+                "tuning": self.state.get("tuning", "") if self._profile() else "",
+                "tuningFollow": self.state.get("tuningFollow", True), "outputsMax": OUTPUTS_MAX,
+                "inputs": self._tuned_list("input"),
+                "micTuning": self.state.get("micTuning", "") if self._profile("input") else "",
+                "micTuningFollow": self.state.get("micTuningFollow", True)}
 
     def report(self) -> dict:
-        if self.state.get("presets") != self.preset_names():
+        if self.state.get("presets") != self.preset_names() or self.state.get("micPresets") != self.preset_names("input"):
             self._write_state()
         self._seen = self.signature()
         if not self.ee.connect():
@@ -753,18 +814,23 @@ class Engine:
                 "presets": self.preset_names(), "presetInfo": self.preset_info(),
                 "mic": {"adopted": bool(mic_core), "core": self._core_report("input", mic_core),
                         "active": self._pipe("input").get("active", ""),
-                        "builtins": list(self.builtins["microphone"].keys())}}
+                        "builtins": list(self.builtins["microphone"].keys()),
+                        "presets": self.preset_names("input"), "presetInfo": self.preset_info("input")}}
 
     # --- presets ----------------------------------------------------------------
 
-    def _preset_path(self, name: str) -> Path:
-        safe = re.sub(r"[^\w\- ]", "_", name).strip() or "preset"
-        return self.presets_dir / f"{safe}.json"
+    def _preset_dir(self, pipe: str = "output") -> Path:
+        # The microphone's presets keep a folder of their own, so a sound for the voice never lists among the output's.
+        return self.presets_dir / "microphone" if pipe == "input" else self.presets_dir
 
-    def _preset_files(self) -> list:
+    def _preset_path(self, name: str, pipe: str = "output") -> Path:
+        safe = re.sub(r"[^\w\- ]", "_", name).strip() or "preset"
+        return self._preset_dir(pipe) / f"{safe}.json"
+
+    def _preset_files(self, pipe: str = "output") -> list:
         out = []
         try:
-            files = sorted(self.presets_dir.glob("*.json"))
+            files = sorted(self._preset_dir(pipe).glob("*.json"))
         except OSError:
             return out
         for path in files:
@@ -776,93 +842,110 @@ class Engine:
                 out.append((path, data))
         return out
 
-    def preset_names(self) -> list:
-        return sorted((data["name"] for _, data in self._preset_files()), key=str.casefold)
+    def preset_names(self, pipe: str = "output") -> list:
+        return sorted((data["name"] for _, data in self._preset_files(pipe)), key=str.casefold)
 
-    def preset_info(self) -> dict:
+    def preset_info(self, pipe: str = "output") -> dict:
         """What each of the person's presets holds: the sound it started from, and how many effects it turns on."""
         info = {}
-        for _, data in self._preset_files():
+        for _, data in self._preset_files(pipe):
             on = [kind for kind, entry in (data.get("core") or {}).items() if (entry or {}).get("enabled")]
             on += [extra.get("kind") for extra in (data.get("extras") or []) if extra.get("enabled")]
             info[data["name"]] = {"base": data.get("base") or "", "on": len(on)}
         return info
 
-    def _find_preset(self, name: str):
-        for path, data in self._preset_files():
+    def _find_preset(self, name: str, pipe: str = "output"):
+        for path, data in self._preset_files(pipe):
             if data.get("name") == name:
                 return path
         return None
 
-    def _builtin_names(self) -> list:
+    def _builtin_names(self, pipe: str = "output") -> list:
+        if pipe == "input":
+            return list(self.builtins["microphone"].keys())
         return ["Default"] + list(self.builtins["presets"].keys())
 
-    def _check_name(self, name: str) -> str:
+    def _check_name(self, name: str, pipe: str = "output") -> str:
         name = str(name or "").strip()
         if not name or len(name) > NAME_MAX:
             raise ValueError("invalid_name")
-        if name in self._builtin_names():
+        if name in self._builtin_names(pipe):
             raise ValueError("builtin_name")
         return name
 
-    def _free_name(self, name: str) -> str:
-        if self._find_preset(name) is None and name not in self._builtin_names():
+    def _free_name(self, name: str, pipe: str = "output") -> str:
+        if self._find_preset(name, pipe) is None and name not in self._builtin_names(pipe):
             return name
         n = 2
-        while self._find_preset(f"{name} {n}") is not None:
+        while self._find_preset(f"{name} {n}", pipe) is not None:
             n += 1
         return f"{name} {n}"
 
-    def _write_preset(self, data: dict, path=None) -> None:
-        path = path or self._preset_path(data["name"])
-        if path.exists() and self._find_preset(data["name"]) != path:
+    def _write_preset(self, data: dict, path=None, pipe: str = "output") -> None:
+        path = path or self._preset_path(data["name"], pipe)
+        if path.exists() and self._find_preset(data["name"], pipe) != path:
             n = 2
             while path.exists():
-                path = self._preset_path(f"{data['name']} {n}")
+                path = self._preset_path(f"{data['name']} {n}", pipe)
                 n += 1
-        self.presets_dir.mkdir(parents=True, exist_ok=True)
+        self._preset_dir(pipe).mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+        tmp.write_text(json.dumps(finite(data), indent=1) + "\n", encoding="utf-8")
         tmp.replace(path)
 
-    def _current_preset(self, name: str) -> dict:
-        core = self.ensure_core()
-        chain = self.chain()
-        data = {"name": name, "base": self.state.get("active", ""), "core": {}, "extras": []}
-        for kind in CORE:
-            entry = self.read_plugin(core[kind], full=True)
+    def _active(self, pipe: str = "output") -> str:
+        return str((self.state if pipe == "output" else self._pipe(pipe)).get("active", "") or "")
+
+    def _set_active(self, name: str, pipe: str = "output") -> None:
+        (self.state if pipe == "output" else self._pipe(pipe))["active"] = name
+
+    def _current_preset(self, name: str, pipe: str = "output") -> dict:
+        core = self.ensure_core(pipe)
+        chain = self.chain(pipe)
+        data = {"name": name, "base": self._active(pipe), "core": {}, "extras": []}
+        for kind in PIPES[pipe]["core"]:
+            entry = self.read_plugin(core[kind], full=True, pipe=pipe)
             data["core"][kind] = {"enabled": entry["enabled"], "values": entry["values"]}
             if "channels" in entry:
                 data["core"][kind]["channels"] = entry["channels"]
         for plugin_id in chain:
             if plugin_id in core.values():
                 continue
-            entry = self.read_plugin(plugin_id, full=True)
+            entry = self.read_plugin(plugin_id, full=True, pipe=pipe)
             item = {"kind": entry["kind"], "enabled": entry["enabled"], "values": entry["values"]}
             if "channels" in entry:
                 item["channels"] = entry["channels"]
             data["extras"].append(item)
         return data
 
-    def save(self, name: str) -> None:
-        name = self._check_name(name)
-        self._write_preset(self._current_preset(name), self._find_preset(name))
-        self.state["active"] = name
-        self.mark_baseline()
+    def save(self, name: str, pipe: str = "output") -> None:
+        name = self._check_name(name, pipe)
+        self._write_preset(self._current_preset(name, pipe), self._find_preset(name, pipe), pipe)
+        self._set_active(name, pipe)
+        if pipe == "output":
+            self.mark_baseline()
+        else:
+            self._write_state()
 
-    def _load_data(self, data: dict, fresh: bool = False) -> None:
+    def _start_values(self, kind: str, pipe: str) -> tuple:
+        """Where a core effect starts before a preset sets it: neutral, never silent."""
+        return self._mic_start(kind) if pipe == "input" else self._builtin_values("Flat", kind, 10)
+
+    def _load_data(self, data: dict, fresh: bool = False, pipe: str = "output") -> None:
         """Play a preset. `fresh` builds the whole chain anew instead of keeping the one EasyEffects has."""
+        kinds = PIPES[pipe]["core"]
         if fresh:
             core = {}
-            for kind in CORE:
+            for kind in kinds:
                 core[kind] = self._free_id(kind, list(core.values()))
-            self._pipe("output")["core"] = core
+            self._pipe(pipe)["core"] = core
         else:
-            core = self.ensure_core()
+            core = self.ensure_core(pipe)
         plan = []
-        for kind in CORE:
+        for kind in kinds:
             saved = (data.get("core") or {}).get(kind) or {}
-            values, channels = self._builtin_values("Flat", kind, 10)
+            values, channels = self._start_values(kind, pipe)
+            values = dict(values)
             values.update(saved.get("values") or {})
             plan.append({"id": core[kind], "enabled": bool(saved.get("enabled")),
                          "values": values, "channels": saved.get("channels") or channels})
@@ -875,60 +958,65 @@ class Engine:
             taken.append(plugin_id)
             plan.append({"id": plugin_id, "enabled": bool(extra.get("enabled")),
                          "values": extra.get("values") or {}, "channels": extra.get("channels")})
-        if not self.rebuild(plan):
+        if not self.rebuild(plan, pipe):
             raise RuntimeError("chain_failed")
 
-    def load(self, name: str) -> None:
-        path = self._find_preset(name)
+    def load(self, name: str, pipe: str = "output") -> None:
+        path = self._find_preset(name, pipe)
         if path is None:
             raise ValueError("preset_not_found")
-        self._load_data(json.loads(path.read_text(encoding="utf-8")))
-        self.state["active"] = name
-        self.headroom_follow()
-        self.mark_baseline()
+        self._load_data(json.loads(path.read_text(encoding="utf-8")), pipe=pipe)
+        self._set_active(name, pipe)
+        if pipe == "output":
+            self.headroom_follow()
+            self.mark_baseline()
+        else:
+            self._write_state()
 
-    def rename(self, old: str, new: str) -> None:
-        new = self._check_name(new)
-        path = self._find_preset(old)
+    def rename(self, old: str, new: str, pipe: str = "output") -> None:
+        new = self._check_name(new, pipe)
+        path = self._find_preset(old, pipe)
         if path is None:
             raise ValueError("preset_not_found")
-        if new != old and self._find_preset(new) is not None:
+        if new != old and self._find_preset(new, pipe) is not None:
             raise ValueError("name_taken")
         data = json.loads(path.read_text(encoding="utf-8"))
         data["name"] = new
-        target = self._preset_path(new)
+        target = self._preset_path(new, pipe)
         # Two names can share a file name ("Rock?" and "Rock_"): the other preset's file is never written over.
         n = 2
         while target.exists() and target != path:
-            target = self._preset_path(f"{new} {n}")
+            target = self._preset_path(f"{new} {n}", pipe)
             n += 1
         tmp = target.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
         tmp.replace(target)
         if target != path:
             path.unlink(missing_ok=True)
-        if self.state.get("active") == old:
-            self.state["active"] = new
-        for memory in ("devices", "apps"):
-            for key, preset in list((self.state.get(memory) or {}).items()):
-                if preset == old:
-                    self.state[memory][key] = new
+        if self._active(pipe) == old:
+            self._set_active(new, pipe)
+        if pipe == "output":
+            for memory in ("devices", "apps"):
+                for key, preset in list((self.state.get(memory) or {}).items()):
+                    if preset == old:
+                        self.state[memory][key] = new
         self._write_state()
 
-    def delete(self, name: str) -> None:
-        path = self._find_preset(name)
+    def delete(self, name: str, pipe: str = "output") -> None:
+        path = self._find_preset(name, pipe)
         if path is None:
             raise ValueError("preset_not_found")
         path.unlink(missing_ok=True)
-        for memory in ("devices", "apps"):
-            self.state[memory] = {key: preset for key, preset in (self.state.get(memory) or {}).items()
-                                  if preset != name}
-        # The sound it described is gone with it: the engine goes back to Default.
-        if self.state.get("active") == name:
+        if pipe == "output":
+            for memory in ("devices", "apps"):
+                self.state[memory] = {key: preset for key, preset in (self.state.get(memory) or {}).items()
+                                      if preset != name}
+        # The sound it described is gone with it: the chain goes back to its neutral sound.
+        if self._active(pipe) == name:
             if self.ee.connect():
-                self.apply_builtin("Default")
+                self.apply_builtin("Default") if pipe == "output" else self.apply_mic("Off")
             else:
-                self.state["active"] = ""
+                self._set_active("", pipe)
         self._write_state()
 
     # --- import and export --------------------------------------------------------
@@ -1065,24 +1153,302 @@ class Engine:
     # --- operations ---------------------------------------------------------------
 
     def apply_builtin(self, name: str) -> None:
+        """A built-in sound on the core effects that are on. With a tuned output chosen, shaped to it: the effects the
+        output needs (its correction, its high-pass, its limiter) come on too, and Default keeps only those."""
         if name not in self._builtin_names():
             raise ValueError("preset_not_found")
         core = self.ensure_core()
+        profile = self._profile()
+        needs = self._needs(name, profile)
         for kind in CORE:
             plugin_id = core[kind]
             path = self._path(plugin_id)
             enabled = self.ee.get("output", f"{path}:bypass") in ("false", "0")
-            if name != "Default" and not enabled:
+            if name != "Default" and not enabled and kind not in needs:
                 continue
             count = int(float(self.ee.get("output", f"{path}:numBands") or 10)) if kind == "equalizer" else 10
             if count not in BAND_COUNTS:
                 count = 10
-            values, channels = self._builtin_values("Flat" if name == "Default" else name, kind, count)
+            values, channels = self._builtin_values("Flat" if name == "Default" else name, kind, count, profile)
             self._apply(plugin_id, values, channels)
-            if name == "Default":
-                self.ee.set("output", f"{path}:bypass", True)
+            if name == "Default" or kind in needs:
+                self.ee.set("output", f"{path}:bypass", kind not in needs)
         self.state["active"] = name
         self.mark_baseline()
+
+    # --- tuned outputs ------------------------------------------------------------------
+
+    def _tuned_list(self, pipe: str = "output") -> list:
+        found = self.state.get(TUNED[pipe]["list"])
+        return found if isinstance(found, list) else []
+
+    def _tuned(self, tuned_id: str, pipe: str = "output"):
+        return next((o for o in self._tuned_list(pipe) if o.get("id") == tuned_id), None)
+
+    def _profile(self, pipe: str = "output"):
+        """The tuned output (or microphone) the built-in sounds are shaped to, or None for Default."""
+        return self._tuned(str(self.state.get(TUNED[pipe]["choice"]) or ""), pipe)
+
+    @staticmethod
+    def _speakers(profile) -> bool:
+        return bool(profile) and profile.get("kind") != "headphones"
+
+    def _dropped_bass(self, name: str, profile) -> float:
+        """How much bass a sound asks for below where the output still plays: the bass enhancer suggests it instead."""
+        low = (profile or {}).get("low")
+        if not self._speakers(profile) or not low or name in ("Default", "Flat"):
+            return 0.0
+        gains = self.builtins["presets"][name]["equalizer"]["gains"]
+        return max([0.0] + [float(g) for f, g in zip(ISO_10, gains) if f < low])
+
+    def _needs(self, name: str, profile) -> set:
+        """The core effects a tuned output turns on whatever sound plays."""
+        if not profile:
+            return set()
+        if not self._speakers(profile):
+            return {"limiter"}
+        needs = {"equalizer", "limiter"}
+        if profile.get("low"):
+            needs.add("filter")
+        if self._dropped_bass(name, profile) >= 3:
+            needs.add("bass_enhancer")
+        return needs
+
+    def _shaped(self, name: str, kind: str, values: dict, profile) -> dict:
+        """A built-in sound's values for one core effect, shaped to a tuned output."""
+        base = self.builtins["presets"][name]
+        low, high = profile.get("low"), profile.get("high") or 20000
+        strain = float(profile.get("strain") or 0)
+        values = dict(values)
+        if not self._speakers(profile):
+            # At the ear: less harmonic fizz and bloom, a touch quieter, peaks held.
+            if kind == "bass_enhancer" and values["amount"] > 0:
+                values["amount"] = round(values["amount"] * 0.7, 1)
+            elif kind == "exciter":
+                values["amount"] = max(0.0, values["amount"] - 1) if values["amount"] > 0 else values["amount"]
+                if high < 20000:
+                    values.update(ceil=max(10000, min(20000, round(high))), ceilActive=True)
+            elif kind == "autogain":
+                values["target"] = max(-100, values["target"] - 2)
+            elif kind == "limiter":
+                values.update(threshold=min(values["threshold"], -1), gainBoost=False)
+            return values
+        if kind == "filter" and low:
+            # A laptop's microphone hears little low end itself: the cut stays where any small speaker gives out anyway.
+            cut = min(250, round(low * (0.6 + 0.25 * strain)))
+            values.update(type=1, frequency=max(float(base["filter"]["frequency"]), cut),
+                          slope=max(1, int(base["filter"]["slope"])))
+        elif kind == "bass_enhancer" and low and low >= 90:
+            values.update(scope=max(values["scope"], min(250, round(low * 1.4))),
+                          floor=max(20, min(120, round(low * 0.5))), floorActive=True)
+            values["amount"] = round(values["amount"] + min(6.0, self._dropped_bass(name, profile) * 0.75)
+                                     * (1 - 0.5 * strain), 1)
+        elif kind == "exciter" and high < 14000:
+            values.update(ceil=max(10000, min(20000, round(high))), ceilActive=True)
+        elif kind == "limiter":
+            values.update(threshold=min(values["threshold"], round(-1 - 2 * strain, 1)), gainBoost=False)
+        return values
+
+    def _tuned_gains(self, name: str, profile) -> tuple:
+        """A built-in sound's ten octave gains and input gain on a tuned output: its correction added, and no boost
+        below where the output gives out (the bass enhancer suggests that bass instead)."""
+        preset = self.builtins["presets"][name]["equalizer"]
+        gains = [float(g) for g in preset["gains"]]
+        if self._speakers(profile):
+            low = profile.get("low")
+            correction = list(profile.get("correction") or []) + [0.0] * len(ISO_10)
+            gains = [max(-12.0, min(9.0, (min(g, 0.0) if low and f < low else g) + float(c)))
+                     for f, g, c in zip(ISO_10, gains, correction)]
+        input_gain = min(float(preset["inputGain"]), -max([0.0] + gains))
+        return gains, input_gain
+
+    def _new_tuned_id(self, pipe: str = "output") -> str:
+        taken = {o.get("id") for o in self._tuned_list(pipe)}
+        prefix = TUNED[pipe]["prefix"]
+        n = 1
+        while f"{prefix}{n}" in taken:
+            n += 1
+        return f"{prefix}{n}"
+
+    def _check_tuned_name(self, name, own_id: str = "", pipe: str = "output") -> str:
+        name = str(name or "").strip()
+        if not name or len(name) > OUTPUT_NAME_MAX or "\n" in name:
+            raise ValueError("invalid_name")
+        if name.casefold() == "default":
+            raise ValueError("builtin_name")
+        if any(o.get("name", "").casefold() == name.casefold() and o.get("id") != own_id
+               for o in self._tuned_list(pipe)):
+            raise ValueError("tuned_name_taken")
+        return name
+
+    def _free_tuned_name(self, name: str, pipe: str = "output") -> str:
+        name = (str(name or "").strip() or ("Microphone" if pipe == "input" else "Output"))[:OUTPUT_NAME_MAX - 3]
+        taken = {o.get("name", "").casefold() for o in self._tuned_list(pipe)} | {"default"}
+        if name.casefold() not in taken:
+            return name
+        n = 2
+        while f"{name} {n}".casefold() in taken:
+            n += 1
+        return f"{name} {n}"
+
+    def _run_probe(self, args: list) -> dict:
+        """output_probe.py in iNiR's Python environment (NumPy), its progress passed on as it comes."""
+        script = HERE / "output_probe.sh"
+        command = [str(script), *args] if script.exists() else [sys.executable, str(HERE / "output_probe.py"), *args]
+        try:
+            proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True)
+        except OSError:
+            raise RuntimeError("probe_failed")
+        found = None
+        for line in proc.stdout:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if event.get("error"):
+                proc.wait(timeout=5)
+                raise ValueError(str(event["error"]))
+            if event.get("stage"):
+                emit(dict(event, type="probe"))
+            if "result" in event:
+                found = event
+        proc.wait(timeout=5)
+        if found is None:
+            raise RuntimeError("probe_failed")
+        return found
+
+    def mic_source(self) -> str:
+        """The microphone EasyEffects records from: the one a measurement listens to."""
+        configured = self._config_list("input", "inputDevice")
+        here = output_probe.identify_source(configured[0] if configured else "")
+        return here.get("source", "") if here.get("found") else ""
+
+    @staticmethod
+    def _source_volume(source: str):
+        out = subprocess.run(["pactl", "get-source-volume", source], capture_output=True, text=True)
+        found = re.search(r"(\d+)%", out.stdout or "")
+        return int(found.group(1)) if found else None
+
+    def _set_source_volume(self, source: str, percent: int) -> None:
+        subprocess.run(["pactl", "set-source-volume", source, f"{max(5, min(100, int(percent)))}%"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def probe(self, device: str, replace: str = "", pipe: str = "output") -> str:
+        """Measure the output playing now, or the microphone (while the person speaks), and keep it as a tuned one,
+        chosen at once. `replace` measures a tuned one again, keeping its name."""
+        key = TUNED[pipe]["device"]
+        device = str(device or "").strip() or (self.mic_source() if pipe == "input" else "")
+        if not device:
+            raise ValueError("no_output" if pipe == "output" else "no_mic")
+        old = self._tuned(replace, pipe) if replace else None
+        if replace and old is None:
+            raise ValueError("tuned_not_found")
+        if old is None and len(self._tuned_list(pipe)) >= OUTPUTS_MAX:
+            raise ValueError("tuned_full")
+        volume = self._source_volume(device) if pipe == "input" else None
+        # What is measured is the device as it is: the engine's own effects stay out of it.
+        running = self.ee.connect()
+        was = self.ee.bypassed() if running else False
+        if running and not was:
+            self.ee.bypass(True)
+        try:
+            found = self._run_probe(["--sink", device] if pipe == "output"
+                                    else ["--mic", device, "--volume", str(volume or 0)])
+        finally:
+            if running and not was:
+                self.ee.bypass(False)
+        found_device, result = found.get("device") or {}, found.get("result") or {}
+        entry = {key: device, "route": found_device.get("route", ""),
+                 "description": found_device.get("description", ""), "device": found_device.get("device", ""),
+                 "kind": found_device.get("kind", "speakers" if pipe == "output" else "internal"),
+                 "measured": bool(result.get("measured")), "reason": result.get("reason", ""),
+                 "correction": result.get("correction") or [0.0] * len(ISO_10), "curve": result.get("curve") or [],
+                 "snr": result.get("snr"), "created": time.strftime("%Y-%m-%d %H:%M")}
+        if pipe == "output":
+            entry.update({"builtIn": bool(found_device.get("builtIn")), "codec": found_device.get("codec", ""),
+                          "low": result.get("low"), "high": result.get("high"), "strain": result.get("strain", 0),
+                          "thd": result.get("thd")})
+        else:
+            entry.update({key2: result.get(key2) for key2 in ("noise", "speech", "peak", "clipped", "pitch", "cut",
+                                                              "gate", "sibilance")})
+            # A microphone that clips or barely registers is set right at its source; the tuned microphone keeps it.
+            if volume and result.get("volume") and int(result["volume"]) != volume:
+                self._set_source_volume(device, int(result["volume"]))
+                entry.update(volume=int(result["volume"]), volumeWas=volume)
+            else:
+                entry.update(volume=volume, volumeWas=volume)
+        if old is not None:
+            old.update(entry)
+            tuned_id = old["id"]
+        else:
+            tuned_id = self._new_tuned_id(pipe)
+            name = self._free_tuned_name(entry["description"] or entry["device"], pipe)
+            self.state[TUNED[pipe]["list"]] = self._tuned_list(pipe) + [dict(entry, id=tuned_id, name=name)]
+        self.tune_for(tuned_id, pipe)
+        return tuned_id
+
+    def tune_for(self, tuned_id: str, pipe: str = "output") -> None:
+        """Shape the built-in sounds to a tuned output or microphone ("" for Default); the built-in sound playing follows
+        at once, and a tuned microphone brings back the input level it was measured at."""
+        tuned_id = str(tuned_id or "")
+        profile = self._tuned(tuned_id, pipe) if tuned_id else None
+        if tuned_id and profile is None:
+            raise ValueError("tuned_not_found")
+        self.state[TUNED[pipe]["choice"]] = tuned_id
+        self._write_state()
+        if pipe == "input" and profile and profile.get("volume") and profile.get("source"):
+            self._set_source_volume(profile["source"], profile["volume"])
+        active = self._active(pipe)
+        if active in self._builtin_names(pipe) and self.ee.connect() and self.core_ids(self.chain(pipe), pipe):
+            self.apply_builtin(active) if pipe == "output" else self.apply_mic(active)
+
+    def rename_tuned(self, tuned_id: str, name, pipe: str = "output") -> None:
+        entry = self._tuned(str(tuned_id or ""), pipe)
+        if entry is None:
+            raise ValueError("tuned_not_found")
+        entry["name"] = self._check_tuned_name(name, entry["id"], pipe)
+        self._write_state()
+
+    def forget_tuned(self, tuned_id: str, pipe: str = "output") -> None:
+        tuned_id = str(tuned_id or "")
+        if self._tuned(tuned_id, pipe) is None:
+            raise ValueError("tuned_not_found")
+        self.state[TUNED[pipe]["list"]] = [o for o in self._tuned_list(pipe) if o.get("id") != tuned_id]
+        if self.state.get(TUNED[pipe]["choice"]) == tuned_id:
+            self.tune_for("", pipe)
+        else:
+            self._write_state()
+
+    def set_follow(self, on: bool, pipe: str = "output") -> None:
+        self.state[TUNED[pipe]["follow"]] = bool(on)
+        self._write_state()
+
+    def follow(self, device: str, pipe: str = "output") -> None:
+        """The device changed (a sink or source, or a port on one: headphones or a headset in or out): its tuned one,
+        the newest measured on that same device and port, takes over; none, and one measured elsewhere steps back to
+        Default."""
+        if not self.state.get(TUNED[pipe]["follow"], True) or not self._tuned_list(pipe):
+            return
+        key = TUNED[pipe]["device"]
+        if pipe == "input":
+            here = output_probe.identify_source(str(device or "") or self.mic_source())
+            device = here.get("source", "")
+        else:
+            here = output_probe.identify(str(device or ""))
+        if not here.get("found"):
+            return
+        spot = (device, here.get("route", ""))
+        matches = [o for o in self._tuned_list(pipe) if (o.get(key), o.get("route", "")) == spot]
+        current = self._profile(pipe)
+        if matches:
+            target = matches[-1]["id"]
+        elif current is not None and (current.get(key), current.get("route", "")) != spot:
+            target = ""
+        else:
+            return
+        if target != self.state.get(TUNED[pipe]["choice"], ""):
+            self.tune_for(target, pipe)
 
     def apply(self, name: str) -> None:
         """A sound by name, built in or the person's own: what devices and the command line ask for."""
@@ -1092,16 +1458,28 @@ class Engine:
             self.load(name)
 
     def apply_mic(self, name: str) -> None:
+        """A microphone sound on the effects that are on, as the output's built-ins work; Off turns every one off.
+        With a tuned microphone chosen, shaped to it, and what it needs comes on too."""
         if name not in self.builtins["microphone"]:
             raise ValueError("preset_not_found")
         core = self.ensure_core("input")
+        profile = self._profile("input")
+        needs = set() if name == "Off" else self._mic_needs(profile)
         for kind in PIPES["input"]["core"]:
-            sound = self._mic_values(name, kind)
+            path = self._path(core[kind])
+            if name == "Off":
+                self.ee.set("input", f"{path}:bypass", True)
+                continue
+            enabled = self.ee.get("input", f"{path}:bypass") in ("false", "0")
+            if not enabled and kind not in needs:
+                continue
+            sound = self._mic_values(name, kind, profile) or self._mic_values("Calls", kind, profile)
             if sound is None:
                 continue
-            enabled, values = sound
-            self._apply(core[kind], values, pipe="input")
-            self.ee.set("input", f"{self._path(core[kind])}:bypass", not enabled)
+            values, channels = sound
+            self._apply(core[kind], values, channels, "input")
+            if kind in needs:
+                self.ee.set("input", f"{path}:bypass", False)
         self._pipe("input")["active"] = name
         self._write_state()
 
@@ -1205,16 +1583,21 @@ class Engine:
             value = bool(value)
         self.ee.set(pipe, f"{self._path(plugin_id)}:{name}", value)
 
-    def set_band(self, index: int, gain: float) -> None:
-        core = self.ensure_core()
+    def set_band(self, index: int, gain: float, pipe: str = "output") -> None:
+        core = self.ensure_core(pipe)
         path = self._path(core["equalizer"])
-        count = int(float(self.ee.get("output", f"{path}:numBands") or 0))
+        count = int(float(self.ee.get(pipe, f"{path}:numBands") or 0))
         if not 0 <= index < count:
             raise ValueError("invalid_band")
         gain = max(-36.0, min(36.0, float(gain)))
         for side in ("left", "right"):
-            self.ee.set("output", f"{path}:{side}:band{index}Gain", gain)
-        self.headroom_follow()
+            self.ee.set(pipe, f"{path}:{side}:band{index}Gain", gain)
+        if pipe == "output":
+            self.headroom_follow()
+            return
+        # The voice's equalizer always keeps its headroom: a boosted band never clips what follows it.
+        gains = [float(self.ee.get(pipe, f"{path}:left:band{i}Gain") or 0) for i in range(count)]
+        self.ee.set(pipe, f"{path}:inputGain", round(-max([0.0] + gains), 2))
 
     def set_enabled(self, request: dict) -> None:
         pipe, plugin_id = self.target(request)
@@ -1295,7 +1678,7 @@ class Engine:
             self.start()
         self.apply(name)
         if mic:
-            self.apply_mic(mic)
+            self.apply_mic(mic) if mic in self.builtins["microphone"] else self.load(mic, "input")
         if self.ee.bypassed():
             self.ee.bypass(False)
 
@@ -1305,8 +1688,9 @@ class Engine:
 
     def handle(self, request: dict) -> None:
         op = request.get("op")
+        pipe = "input" if request.get("pipe") == "input" else "output"
         quiet = {"set": lambda: self.set_value(request),
-                 "band": lambda: self.set_band(int(request.get("index", -1)), request.get("gain", 0)),
+                 "band": lambda: self.set_band(int(request.get("index", -1)), request.get("gain", 0), pipe),
                  "bypass": lambda: self.ee.bypass(bool(request.get("on"))),
                  "toggleBypass": lambda: self.ee.bypass(not self.ee.bypassed())}
         loud = {
@@ -1328,10 +1712,10 @@ class Engine:
             "tune": lambda: self.tune(request),
             "add": lambda: self.add(str(request.get("kind", ""))),
             "remove": lambda: self.remove(str(request.get("id", ""))),
-            "save": lambda: self.save(request.get("name")),
-            "load": lambda: self.load(str(request.get("name", ""))),
-            "rename": lambda: self.rename(str(request.get("from", "")), request.get("to")),
-            "delete": lambda: self.delete(str(request.get("name", ""))),
+            "save": lambda: self.save(request.get("name"), pipe),
+            "load": lambda: self.load(str(request.get("name", "")), pipe),
+            "rename": lambda: self.rename(str(request.get("from", "")), request.get("to"), pipe),
+            "delete": lambda: self.delete(str(request.get("name", "")), pipe),
             "revert": self.revert,
             "headroom": lambda: self.set_headroom(bool(request.get("on"))),
             "remember": lambda: self.remember(request.get("sink"), str(request.get("preset", ""))),
@@ -1339,6 +1723,14 @@ class Engine:
             "export": lambda: self.export(str(request.get("name", "")), str(request.get("path", "")),
                                           str(request.get("format", "inir"))),
             "import": lambda: emit({"type": "imported", "name": self.import_preset(str(request.get("path", "")))}),
+            "probe": lambda: emit({"type": "probed", "pipe": pipe,
+                                   "id": self.probe(str(request.get("device", "") or request.get("sink", "")),
+                                                    str(request.get("replace", "") or ""), pipe)}),
+            "tuneFor": lambda: self.tune_for(str(request.get("id", "") or ""), pipe),
+            "renameTuned": lambda: self.rename_tuned(str(request.get("id", "")), request.get("name"), pipe),
+            "forgetTuned": lambda: self.forget_tuned(str(request.get("id", "")), pipe),
+            "follow": lambda: self.follow(str(request.get("device", "") or request.get("sink", "")), pipe),
+            "tuningFollow": lambda: self.set_follow(bool(request.get("on")), pipe),
         }
         try:
             if op in quiet:
