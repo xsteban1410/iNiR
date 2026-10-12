@@ -145,6 +145,29 @@ def read_preset_keys(path: Path, names: set) -> list:
     return keys
 
 
+def dump(schema: dict) -> str:
+    """The schema with one property or preset key per line: a whole object per line would hide a diff, one value per
+    line spreads it over ten thousand lines."""
+    def line(value) -> str:
+        return json.dumps(value, ensure_ascii=False, separators=(", ", ": "))
+
+    out = ["{", f' "easyeffects": {line(schema["easyeffects"])},', ' "plugins": {']
+    plugins = list(schema["plugins"].items())
+    for n, (name, plugin) in enumerate(plugins):
+        out.append(f"  {line(name)}: {{")
+        fields = list(plugin.items())
+        for m, (key, value) in enumerate(fields):
+            comma = "," if m < len(fields) - 1 else ""
+            if isinstance(value, list):
+                items = [f"    {line(item)}" + ("," if i < len(value) - 1 else "") for i, item in enumerate(value)]
+                out += [f"   {line(key)}: [", *items, f"   ]{comma}"] if items else [f"   {line(key)}: []{comma}"]
+            else:
+                out.append(f"   {line(key)}: {line(value)}{comma}")
+        out.append("  }" + ("," if n < len(plugins) - 1 else ""))
+    out += [" }", "}"]
+    return "\n".join(out) + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("kcfg_dir", type=Path)
@@ -174,8 +197,7 @@ def main() -> int:
             labels[name[len("band"):-len("Labels")]] = (entry.find(tag + "default").text or "").split(",")
     plugins["equalizer"]["channelLabels"] = labels
 
-    OUTPUT.write_text(json.dumps({"easyeffects": args.version, "plugins": plugins},
-                                 indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    OUTPUT.write_text(dump({"easyeffects": args.version, "plugins": plugins}), encoding="utf-8")
     print(f"wrote {OUTPUT.relative_to(Path.cwd()) if OUTPUT.is_relative_to(Path.cwd()) else OUTPUT}")
     return 0
 
