@@ -11,9 +11,10 @@ import qs.modules.iris.style
 import qs.modules.iris.components
 import qs.modules.iris.settings
 
-// The Audio Engine at a glance: the sound playing now, effects on or off, a few sounds and the microphone's a tap
-// away. The Island's Sound page and the Audio Engine bubble's card both show it; everything else is one step further,
-// in the Audio Engine itself (openRequested).
+// The Audio Engine at a glance: the sound playing now and the equalizer's curve, effects on or off, a few sounds (the
+// person's own among them), the output and microphone they are tuned for, and the microphone's sounds a tap away. The
+// Island's Sound page and the Audio Engine bubble's card both show it; everything else is one step further, in the
+// Audio Engine itself (openRequested).
 ColumnLayout {
     id: root
     // Holds the helper only while it is on screen: a page left behind a collapsed Island must not keep it running.
@@ -22,11 +23,14 @@ ColumnLayout {
 
     readonly property real d: IrisStyle.density
     readonly property var quick: {
-        const picks = ["Default", "Voice", "Bass", "Pop", "Rock"].concat(AudioEngine.presets.slice(0, 3))
+        const picks = ["Default", "Voice", "Bass", "Games", "Movies", "Night"].filter(name => AudioEngine.builtins.includes(name))
+            .concat(AudioEngine.presets.slice(0, 3))
         const now = AudioEngine.active
         return now.length > 0 && !picks.includes(now) ? picks.concat([now]) : picks
     }
-    readonly property var micSounds: AudioEngine.mic?.builtins ?? []
+    readonly property var micBuiltins: AudioEngine.mic?.builtins ?? []
+    readonly property var micSounds: root.micBuiltins.concat(AudioEngine.mic?.presets ?? [])
+    readonly property var eq: AudioEngine.module("equalizer")
     spacing: 12 * root.d
 
     property bool held: false
@@ -55,7 +59,11 @@ ColumnLayout {
             IrisText {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                text: AudioEngine.shownActive.length > 0 ? Translation.tr(AudioEngine.shownActive) : Translation.tr("No sound chosen")
+                text: AudioEngine.shownActive.length === 0 ? Translation.tr("No sound chosen")
+                    : AudioEngine.tunedOutput && AudioEngine.builtins.includes(AudioEngine.shownActive)
+                    ? Translation.tr("%1 for %2").arg(Translation.tr(AudioEngine.shownActive)).arg(AudioEngine.tunedOutput.name)
+                    : AudioEngine.presets.includes(AudioEngine.shownActive) ? AudioEngine.shownActive
+                    : Translation.tr(AudioEngine.shownActive)
                 font.pixelSize: IrisStyle.typeBody
                 font.weight: IrisStyle.weight(Font.DemiBold)
             }
@@ -84,6 +92,17 @@ ColumnLayout {
         }
     }
 
+    // What the equalizer does to the sound now, quiet while it is off or bypassed.
+    IrisAudioCurve {
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.round(44 * root.d)
+        visible: AudioEngine.running && (root.eq?.bands ?? []).length > 0
+        bands: root.eq?.bands ?? []
+        active: (root.eq?.enabled ?? false) && !AudioEngine.bypass
+        grid: false
+        quiet: true
+    }
+
     Flow {
         Layout.fillWidth: true
         visible: AudioEngine.running
@@ -93,10 +112,23 @@ ColumnLayout {
             Chip {
                 required property var modelData
                 name: modelData
+                own: AudioEngine.presets.includes(modelData)
                 selected: AudioEngine.active === modelData
                 onClicked: AudioEngine.applyPreset(modelData)
             }
         }
+    }
+
+    // The output and microphone the built-in sounds are fit to, when the Auto Audio / Microphone Engine is on.
+    Tuned {
+        visible: AudioEngine.running && AudioEngine.autoOutput && AudioEngine.outputs.length > 0
+        pipe: "output"
+        title: Translation.tr("Tuned for")
+    }
+    Tuned {
+        visible: AudioEngine.running && AudioEngine.autoMic && AudioEngine.inputs.length > 0
+        pipe: "input"
+        title: Translation.tr("Voice tuned for")
     }
 
     ColumnLayout {
@@ -117,7 +149,8 @@ ColumnLayout {
                     required property var modelData
                     name: modelData
                     selected: (AudioEngine.mic?.active ?? "") === modelData
-                    onClicked: AudioEngine.applyMic(modelData)
+                    own: !root.micBuiltins.includes(modelData)
+                    onClicked: own ? AudioEngine.loadMicPreset(modelData) : AudioEngine.applyMic(modelData)
                 }
             }
         }
@@ -133,17 +166,52 @@ ColumnLayout {
         onClicked: AudioEngine.start()
     }
 
+    component Tuned: ColumnLayout {
+        id: tuned
+        property string pipe: "output"
+        property string title: ""
+        readonly property var chosen: AudioEngine.tunedOf(tuned.pipe)
+        Layout.fillWidth: true
+        spacing: 8 * root.d
+        IrisText {
+            text: tuned.title
+            role: IrisText.Meta
+            font.weight: IrisStyle.weight(Font.DemiBold)
+        }
+        Flow {
+            Layout.fillWidth: true
+            spacing: Math.round(6 * root.d)
+            Chip {
+                name: "Default"
+                selected: tuned.chosen === null
+                onClicked: AudioEngine.tuneFor("", tuned.pipe)
+            }
+            Repeater {
+                model: AudioEngine.tunedList(tuned.pipe)
+                Chip {
+                    required property var modelData
+                    name: String(modelData.name)
+                    own: true
+                    selected: tuned.chosen?.id === modelData.id
+                    onClicked: AudioEngine.tuneFor(String(modelData.id), tuned.pipe)
+                }
+            }
+        }
+    }
+
     component Chip: MouseArea {
         id: chip
         property string name: ""
         property bool selected: false
+        // A name the person gave is shown as it is, never looked up as a translation.
+        property bool own: false
         width: chipLabel.implicitWidth + Math.round(24 * root.d)
         height: Math.round(30 * root.d)
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         enabled: !AudioEngine.busy
         Accessible.role: Accessible.RadioButton
-        Accessible.name: Translation.tr(chip.name)
+        Accessible.name: chip.own ? chip.name : Translation.tr(chip.name)
         Accessible.checked: chip.selected
         Rectangle {
             anchors.fill: parent
@@ -155,7 +223,7 @@ ColumnLayout {
         IrisText {
             id: chipLabel
             anchors.centerIn: parent
-            text: Translation.tr(chip.name)
+            text: chip.own ? chip.name : Translation.tr(chip.name)
             font.pixelSize: IrisStyle.typeLabel
             font.weight: IrisStyle.weight(chip.selected ? Font.DemiBold : Font.Medium)
         }
