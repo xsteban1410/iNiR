@@ -14,7 +14,7 @@ import qs.services.deferred
 // A tuned microphone follows the microphones' ports the same way (a headset in or out).
 Item {
     id: root
-    readonly property string sink: String(Audio.sink?.name ?? "")
+    readonly property string sink: AudioEngine.outputSink
     readonly property bool tunes: AudioEngine.autoOutput && AudioEngine.savedFollow && AudioEngine.savedOutputs.length > 0
     readonly property bool tunesMic: AudioEngine.autoMic && AudioEngine.savedMicFollow && AudioEngine.savedInputs.length > 0
     property string lastSink: ""

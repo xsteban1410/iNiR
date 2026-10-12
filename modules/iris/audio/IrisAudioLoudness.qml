@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.services
+import qs.services.deferred
 import qs.modules.common
 import qs.modules.iris.components
 import qs.modules.iris.style
@@ -17,12 +18,8 @@ ColumnLayout {
     // Autogain's target, in LUFS: the marker on the bar and what the difference is measured from.
     property real target: -16
     readonly property real d: IrisStyle.density
-    // What you hear: the device itself, never EasyEffects' virtual sink (that is what goes into the effects). Audio.sink
-    // resolves to the device behind it once PipeWire says which; until then there is nothing to measure.
-    readonly property string sink: {
-        const name = String(Audio.sink?.name ?? "")
-        return name.startsWith("easyeffects_") ? "" : name
-    }
+    // What you hear: the device itself, never EasyEffects' virtual sink (that is what goes into the effects).
+    readonly property string sink: AudioEngine.outputSink
     onSinkChanged: if (meter.running) root.reset()
     readonly property bool shown: root.visible && root.QsWindow.window?.visible === true
 

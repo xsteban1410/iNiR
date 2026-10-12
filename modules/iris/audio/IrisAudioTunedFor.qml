@@ -20,10 +20,7 @@ ColumnLayout {
     readonly property bool voice: root.pipe === "input"
     readonly property real d: IrisStyle.density
     // The output playing now: the device itself, never EasyEffects' virtual sink.
-    readonly property string sink: {
-        const name = String(Audio.sink?.name ?? "")
-        return name.startsWith("easyeffects_") ? "" : name
-    }
+    readonly property string sink: AudioEngine.outputSink
     readonly property var chosen: AudioEngine.tunedOf(root.pipe)
     property string renaming: ""
     property bool confirming: false

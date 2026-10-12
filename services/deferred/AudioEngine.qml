@@ -106,6 +106,21 @@ Singleton {
         if (!root.autoOutput && String(root._saved?.tuning ?? "").length > 0) { root.hold(); root.tuneFor("", "output") }
         if (!root.autoMic && String(root._saved?.micTuning ?? "").length > 0) { root.hold(); root.tuneFor("", "input") }
     }
+    // The device the effects play out of, never EasyEffects' own sink. Audio.sink stays on that sink when EasyEffects
+    // starts after the shell (its driver is named later and the binding never hears it): the one device there is
+    // stands in then; with several, nothing does and the helper asks PipeWire itself.
+    readonly property var outputDevice: {
+        const sink = Audio.sink
+        if (!root._isEngineSink(sink)) return sink ?? null
+        const devices = Audio.devices(true).filter(node => !root._isEngineSink(node))
+        const driver = Number(sink?.properties?.["node.driver-id"] ?? 0)
+        return devices.find(node => node.id === driver) ?? (devices.length === 1 ? devices[0] : null)
+    }
+    readonly property string outputSink: String(root.outputDevice?.name ?? "")
+    function _isEngineSink(node): bool {
+        return String(node?.name ?? "").startsWith("easyeffects_")
+            || String(node?.properties?.["application.id"] ?? "") === "com.github.wwmm.easyeffects"
+    }
     onAutoOutputChanged: root._settleAuto()
     onAutoMicChanged: root._settleAuto()
     readonly property bool savedMicFollow: root._saved?.micTuningFollow ?? true

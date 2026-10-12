@@ -151,7 +151,7 @@ ColumnLayout {
         Column {
             id: outputColumn
             width: parent.width
-            readonly property string sinkName: String(Audio.sink?.name ?? "")
+            readonly property string sinkName: AudioEngine.outputSink
             readonly property string remembered: String(AudioEngine.devices[outputColumn.sinkName] ?? "")
             readonly property var others: Object.keys(AudioEngine.devices).filter(name => name !== outputColumn.sinkName)
             Item {
@@ -176,7 +176,7 @@ ColumnLayout {
                     spacing: 1
                     IrisText {
                         width: parent.width
-                        text: Audio.friendlyDeviceName(Audio.sink)
+                        text: Audio.friendlyDeviceName(AudioEngine.outputDevice)
                         font.pixelSize: IrisStyle.typeLabel
                         font.weight: IrisStyle.weight(Font.Medium)
                         elide: Text.ElideRight

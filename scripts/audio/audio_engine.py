@@ -1371,6 +1371,12 @@ class Engine:
         return here.get("source", "") if here.get("found") else ""
 
     @staticmethod
+    def output_sink() -> str:
+        """The output EasyEffects plays out of: the one a measurement plays through."""
+        import output_probe
+        return output_probe.default_sink()
+
+    @staticmethod
     def _source_volume(source: str):
         out = subprocess.run(["pactl", "get-source-volume", source], capture_output=True, text=True)
         found = re.search(r"(\d+)%", out.stdout or "")
@@ -1384,7 +1390,7 @@ class Engine:
         """Measure the output playing now, or the microphone (while the person speaks), and keep it as a tuned one,
         chosen at once. `replace` measures a tuned one again, keeping its name."""
         key = TUNED[pipe]["device"]
-        device = str(device or "").strip() or (self.mic_source() if pipe == "input" else "")
+        device = str(device or "").strip() or (self.mic_source() if pipe == "input" else self.output_sink())
         if not device:
             raise ValueError("no_output" if pipe == "output" else "no_mic")
         old = self._tuned(replace, pipe) if replace else None

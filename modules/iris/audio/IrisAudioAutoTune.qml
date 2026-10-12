@@ -19,10 +19,8 @@ Rectangle {
     readonly property bool voice: root.pipe === "input"
     readonly property bool mine: AudioEngine.probing && AudioEngine.probePipe === root.pipe
     readonly property real d: IrisStyle.density
-    readonly property string sink: {
-        const name = String(Audio.sink?.name ?? "")
-        return name.startsWith("easyeffects_") ? "" : name
-    }
+    // Empty when the device behind EasyEffects is not known here: the helper then asks PipeWire which it is.
+    readonly property string sink: AudioEngine.outputSink
     readonly property bool full: AudioEngine.tunedList(root.pipe).length >= AudioEngine.outputsMax
     property bool choosing: false
     property bool resume: false
@@ -107,7 +105,7 @@ Rectangle {
                     Layout.fillWidth: true
                     text: root.mine ? AudioEngine.probeDetail(AudioEngine.probeStage)
                         : root.voice ? Translation.tr("Listens to you talk and fits every microphone sound to your voice")
-                        : Translation.tr("Measures %1 and fits every built-in sound to it").arg(Audio.friendlyDeviceName(Audio.sink))
+                        : Translation.tr("Measures %1 and fits every built-in sound to it").arg(Audio.friendlyDeviceName(AudioEngine.outputDevice))
                     color: IrisStyle.muted
                     font.pixelSize: IrisStyle.typeMeta
                     elide: Text.ElideRight
@@ -118,7 +116,7 @@ Rectangle {
                 text: root.voice ? Translation.tr("Tune my voice") : Translation.tr("Tune this output")
                 emphasized: true
                 buttonRadius: height / 2
-                enabled: !AudioEngine.busy && (root.voice || root.sink.length > 0)
+                enabled: !AudioEngine.busy
                 onClicked: root.start()
             }
         }

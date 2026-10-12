@@ -72,6 +72,23 @@ def pw_dump() -> list:
     return data if isinstance(data, list) else []
 
 
+def default_sink(dump=None) -> str:
+    """The output playing now by node name: the device itself, followed from EasyEffects' sink to the one driving it."""
+    dump = pw_dump() if dump is None else dump
+    nodes = {item.get("id"): (item.get("info") or {}).get("props") or {}
+             for item in dump if str(item.get("type", "")).endswith("Node")}
+    name = ""
+    for item in dump:
+        if str(item.get("type", "")).endswith("Metadata") and (item.get("props") or {}).get("metadata.name") == "default":
+            entry = next((m for m in item.get("metadata") or [] if m.get("key") == "default.audio.sink"), None)
+            value = (entry or {}).get("value")
+            name = str(value.get("name", "")) if isinstance(value, dict) else ""
+    props = next((p for p in nodes.values() if p.get("node.name") == name), {})
+    if name.startswith("easyeffects_") or props.get("application.id") == "com.github.wwmm.easyeffects":
+        name = str(nodes.get(props.get("node.driver-id"), {}).get("node.name") or "")
+    return name
+
+
 def identify(sink: str, dump=None) -> dict:
     """The output by node name: its port, what kind of thing plays it, and a microphone that could hear it."""
     dump = pw_dump() if dump is None else dump
