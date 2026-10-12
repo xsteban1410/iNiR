@@ -19,8 +19,6 @@ import qs.modules.settings as SharedSettings
 ColumnLayout {
     id: root
     readonly property real d: IrisStyle.density
-    property string renaming: ""
-    property string confirming: ""
     // Built-in sounds in blocks by what someone came for, each with its own hue and a word on what it does.
     readonly property var blocks: [
         { caption: "Start clean", names: ["Default", "Flat"] },
@@ -76,171 +74,6 @@ ColumnLayout {
         function onProbed(id: string, pipe: string): void { if (pipe === "output") tunedFor.rename(id) }
     }
 
-    component Caption: IrisText {
-        Layout.leftMargin: 16 * root.d
-        Layout.topMargin: 8 * root.d
-        color: IrisStyle.label
-        font.family: IrisStyle.fontTitle
-        font.pixelSize: IrisStyle.typeMeta
-        font.weight: IrisStyle.weight(Font.DemiBold)
-    }
-
-    component PresetRow: MouseArea {
-        id: row
-        required property string name
-        property string glyph: "tune"
-        property string tintName: "purple"
-        property string line: ""
-        property bool own: false
-        property bool last: false
-        readonly property bool current: AudioEngine.active === row.name
-        readonly property bool editing: row.own && root.renaming === row.name
-        readonly property bool asking: row.own && root.confirming === row.name
-        width: parent ? parent.width : 0
-        height: Math.round(46 * root.d)
-        hoverEnabled: true
-        cursorShape: row.editing ? Qt.IBeamCursor : Qt.PointingHandCursor
-        Accessible.role: Accessible.Button
-        Accessible.name: row.name
-        onClicked: {
-            if (row.editing || row.asking) return
-            if (row.own) AudioEngine.loadPreset(row.name)
-            else AudioEngine.applyBuiltin(row.name)
-        }
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 3 * root.d
-            radius: IrisStyle.radiusRow
-            color: row.pressed ? IrisStyle.fillActive : row.containsMouse ? IrisStyle.fillQuiet : "transparent"
-            Behavior on color { ColorAnimation { duration: IrisStyle.duration(110); easing.type: IrisStyle.feedbackEasing } }
-        }
-        Rectangle {
-            visible: !row.last
-            anchors.bottom: parent.bottom
-            anchors.left: label.left
-            anchors.right: parent.right
-            height: 1
-            color: IrisStyle.hairline
-        }
-        IrisSquircle {
-            id: mark
-            anchors.left: parent.left
-            anchors.leftMargin: 14 * root.d
-            anchors.verticalCenter: parent.verticalCenter
-            width: Math.round(26 * root.d)
-            height: width
-            tint: IrisStyle.identityColor(row.tintName)
-            glyph: row.glyph
-        }
-        IrisText {
-            id: label
-            visible: !row.editing
-            anchors.left: mark.right
-            anchors.leftMargin: 12 * root.d
-            anchors.right: summary.visible ? summary.left : tools.left
-            anchors.rightMargin: 8 * root.d
-            anchors.verticalCenter: parent.verticalCenter
-            text: row.asking ? Translation.tr("Delete “%1”?").arg(row.name) : (row.own ? row.name : Translation.tr(row.name))
-            font.pixelSize: IrisStyle.typeLabel
-            font.weight: IrisStyle.weight(row.current ? Font.DemiBold : Font.Medium)
-            elide: Text.ElideRight
-        }
-        Rectangle {
-            visible: row.editing
-            anchors.left: mark.right
-            anchors.leftMargin: 8 * root.d
-            anchors.right: tools.left
-            anchors.rightMargin: 8 * root.d
-            anchors.verticalCenter: parent.verticalCenter
-            height: Math.round(30 * root.d)
-            radius: IrisStyle.radiusRow
-            color: IrisStyle.fill
-            border.width: 1
-            border.color: IrisStyle.tintBorder(IrisStyle.accent)
-            TextInput {
-                id: renameField
-                anchors.fill: parent
-                anchors.leftMargin: 8 * root.d
-                anchors.rightMargin: 8 * root.d
-                verticalAlignment: TextInput.AlignVCenter
-                color: IrisStyle.text
-                selectionColor: IrisStyle.accentContainer
-                font.family: IrisStyle.fontMain
-                font.pixelSize: IrisStyle.typeLabel
-                maximumLength: 64
-                clip: true
-                onVisibleChanged: if (visible) { text = row.name; selectAll(); forceActiveFocus() }
-                Keys.onReturnPressed: row.commitRename()
-                Keys.onEscapePressed: root.renaming = ""
-            }
-        }
-        function commitRename(): void {
-            const next = renameField.text.trim()
-            if (next.length > 0 && next !== row.name) AudioEngine.renamePreset(row.name, next)
-            root.renaming = ""
-        }
-        IrisText {
-            id: summary
-            visible: row.line.length > 0 && !row.editing && !row.asking
-            anchors.right: tools.left
-            anchors.rightMargin: 10 * root.d
-            anchors.verticalCenter: parent.verticalCenter
-            text: Translation.tr(row.line)
-            color: IrisStyle.muted
-            font.pixelSize: IrisStyle.typeLabel
-        }
-        Row {
-            id: tools
-            anchors.right: parent.right
-            anchors.rightMargin: 12 * root.d
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2 * root.d
-            MaterialSymbol {
-                visible: row.current && !row.editing && !row.asking && !row.containsMouse
-                anchors.verticalCenter: parent.verticalCenter
-                text: "check"
-                iconSize: Math.round(18 * root.d)
-                color: IrisStyle.accent
-            }
-            IrisIconButton {
-                visible: row.own && row.containsMouse && !row.editing && !row.asking
-                materialIcon: "ios_share"
-                Accessible.name: Translation.tr("Export")
-                onClicked: root.exportPreset(row.name)
-            }
-            IrisIconButton {
-                visible: row.own && row.containsMouse && !row.editing && !row.asking
-                materialIcon: "edit"
-                Accessible.name: Translation.tr("Rename")
-                onClicked: { root.confirming = ""; root.renaming = row.name }
-            }
-            IrisIconButton {
-                visible: row.own && row.containsMouse && !row.editing && !row.asking
-                materialIcon: "delete"
-                Accessible.name: Translation.tr("Delete")
-                onClicked: { root.renaming = ""; root.confirming = row.name }
-            }
-            IrisButton {
-                visible: row.editing
-                text: Translation.tr("Done")
-                onClicked: row.commitRename()
-            }
-            IrisButton {
-                visible: row.asking
-                text: Translation.tr("Cancel")
-                quiet: true
-                onClicked: root.confirming = ""
-            }
-            IrisButton {
-                visible: row.asking
-                text: Translation.tr("Delete")
-                danger: true
-                emphasized: true
-                onClicked: { AudioEngine.deletePreset(row.name); root.confirming = "" }
-            }
-        }
-    }
-
     IrisAudioTunedFor {
         id: tunedFor
         Layout.fillWidth: true
@@ -255,7 +88,7 @@ ColumnLayout {
             readonly property var names: block.modelData.names.filter(name => AudioEngine.builtins.includes(name))
             Layout.fillWidth: true
             spacing: 6 * root.d
-            Caption { text: Translation.tr(block.modelData.caption) }
+            IrisAudioCaption { text: Translation.tr(block.modelData.caption) }
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: blockColumn.implicitHeight
@@ -266,14 +99,17 @@ ColumnLayout {
                     width: parent.width
                     Repeater {
                         model: block.names
-                        PresetRow {
+                        IrisAudioPresetRow {
+                            id: builtin
                             required property var modelData
                             required property int index
-                            name: modelData
-                            glyph: root.looks[modelData]?.glyph ?? "tune"
-                            tintName: root.looks[modelData]?.tint ?? "gray"
-                            line: root.lineOf(modelData)
-                            last: index === block.names.length - 1
+                            name: builtin.modelData
+                            glyph: root.looks[builtin.modelData]?.glyph ?? "tune"
+                            tintName: root.looks[builtin.modelData]?.tint ?? "gray"
+                            line: Translation.tr(root.lineOf(builtin.modelData))
+                            last: builtin.index === block.names.length - 1
+                            current: AudioEngine.active === builtin.modelData
+                            onActivated: AudioEngine.applyBuiltin(builtin.modelData)
                         }
                     }
                 }
@@ -289,7 +125,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Caption { Layout.fillWidth: true; text: Translation.tr("Yours") }
+        IrisAudioCaption { Layout.fillWidth: true; text: Translation.tr("Yours") }
         IrisButton {
             Layout.topMargin: 8 * root.d
             Layout.rightMargin: 8 * root.d
@@ -299,98 +135,14 @@ ColumnLayout {
             onClicked: importDialog.open()
         }
     }
-    Rectangle {
+    IrisAudioOwnPresets {
         Layout.fillWidth: true
-        implicitHeight: ownColumn.implicitHeight
-        radius: IrisStyle.radiusTile
-        color: IrisStyle.readingCard
-        Column {
-            id: ownColumn
-            width: parent.width
-            Repeater {
-                model: AudioEngine.presets
-                PresetRow {
-                    required property var modelData
-                    readonly property var info: AudioEngine.presetInfo[modelData] ?? ({})
-                    name: modelData
-                    own: true
-                    glyph: "tune"
-                    line: [info.base ? Translation.tr(info.base) : "", Translation.tr("%1 on").arg(info.on ?? 0)]
-                        .filter(part => part.length > 0).join(" · ")
-                }
-            }
-            IrisText {
-                visible: AudioEngine.presets.length === 0
-                width: parent.width
-                leftPadding: 16 * root.d
-                rightPadding: 16 * root.d
-                topPadding: 14 * root.d
-                text: Translation.tr("Nothing saved yet. Start from a sound above, change what you like, and save it here with everything in the chain.")
-                color: IrisStyle.muted
-                font.pixelSize: IrisStyle.typeMeta
-                wrapMode: Text.WordWrap
-            }
-            Item {
-                width: parent.width
-                height: Math.round(54 * root.d)
-                Rectangle {
-                    id: nameBox
-                    anchors.left: parent.left
-                    anchors.leftMargin: 14 * root.d
-                    anchors.right: saveButton.left
-                    anchors.rightMargin: 8 * root.d
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: Math.round(32 * root.d)
-                    radius: Math.min(height / 2, IrisStyle.radiusRow)
-                    color: nameField.activeFocus ? IrisStyle.fill : IrisStyle.fillQuiet
-                    border.width: nameField.activeFocus ? 1 : 0
-                    border.color: IrisStyle.tintBorder(IrisStyle.accent)
-                    TextInput {
-                        id: nameField
-                        anchors.fill: parent
-                        anchors.leftMargin: 10 * root.d
-                        anchors.rightMargin: 10 * root.d
-                        verticalAlignment: TextInput.AlignVCenter
-                        color: IrisStyle.text
-                        selectionColor: IrisStyle.accentContainer
-                        font.family: IrisStyle.fontMain
-                        font.pixelSize: IrisStyle.typeLabel
-                        maximumLength: 64
-                        clip: true
-                        Keys.onReturnPressed: saveButton.save()
-                        IrisText {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: nameField.text.length === 0
-                            text: AudioEngine.presets.length === 0
-                                ? Translation.tr("Save what you hear as a preset")
-                                : Translation.tr("New preset name")
-                            color: IrisStyle.muted
-                            font.pixelSize: nameField.font.pixelSize
-                        }
-                    }
-                }
-                IrisButton {
-                    id: saveButton
-                    anchors.right: parent.right
-                    anchors.rightMargin: 14 * root.d
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: AudioEngine.presets.includes(nameField.text.trim()) ? Translation.tr("Replace") : Translation.tr("Save")
-                    emphasized: nameField.text.trim().length > 0
-                    enabled: nameField.text.trim().length > 0
-                    function save(): void {
-                        const name = nameField.text.trim()
-                        if (name.length === 0) return
-                        AudioEngine.error = ""
-                        AudioEngine.savePreset(name)
-                        nameField.text = ""
-                    }
-                    onClicked: saveButton.save()
-                }
-            }
-        }
+        emptyText: Translation.tr("Nothing saved yet. Start from a sound above, change what you like, and save it here with everything in the chain.")
+        placeholder: AudioEngine.presets.length === 0 ? Translation.tr("Save what you hear as a preset") : Translation.tr("New preset name")
+        onExportRequested: name => root.exportPreset(name)
     }
     // The sound each output remembers: plugging in headphones brings theirs, the speakers bring back their own.
-    Caption { text: Translation.tr("Outputs") }
+    IrisAudioCaption { text: Translation.tr("Outputs") }
     Rectangle {
         Layout.fillWidth: true
         implicitHeight: outputColumn.implicitHeight
@@ -498,7 +250,7 @@ ColumnLayout {
     }
 
     // The sound each app brings while it plays, chosen under the app in Volume.
-    Caption { text: Translation.tr("Apps") }
+    IrisAudioCaption { text: Translation.tr("Apps") }
     Rectangle {
         Layout.fillWidth: true
         implicitHeight: appColumn.implicitHeight

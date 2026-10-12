@@ -21,15 +21,6 @@ ColumnLayout {
 
     spacing: 6 * root.d
 
-    component Caption: IrisText {
-        Layout.leftMargin: 16 * root.d
-        Layout.topMargin: 10 * root.d
-        color: IrisStyle.label
-        font.family: IrisStyle.fontTitle
-        font.pixelSize: IrisStyle.typeMeta
-        font.weight: IrisStyle.weight(Font.DemiBold)
-    }
-
     readonly property string errorText: ({
         builtin_name: Translation.tr("That name belongs to a built-in sound."),
         invalid_name: Translation.tr("Give it a name of up to 64 characters."),
@@ -55,7 +46,7 @@ ColumnLayout {
         visible: AudioEngine.autoMic && AudioEngine.inputs.length > 0
     }
 
-    Caption { text: Translation.tr("Sound for") }
+    IrisAudioCaption { text: Translation.tr("Sound for") }
     Rectangle {
         Layout.fillWidth: true
         implicitHeight: soundColumn.implicitHeight
@@ -66,75 +57,19 @@ ColumnLayout {
             width: parent.width
             Repeater {
                 model: root.mic.builtins ?? []
-                MouseArea {
-                    id: row
+                IrisAudioPresetRow {
+                    id: sound
                     required property var modelData
                     required property int index
-                    readonly property var look: IrisAudioModules.micLooks[row.modelData] ?? ({ glyph: "mic", tint: "gray", line: "" })
-                    readonly property bool current: (root.mic.active ?? "") === row.modelData
-                    width: soundColumn.width
-                    height: Math.round(46 * root.d)
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    enabled: !AudioEngine.busy
-                    Accessible.role: Accessible.RadioButton
-                    Accessible.name: Translation.tr(row.modelData)
-                    Accessible.checked: row.current
-                    onClicked: AudioEngine.applyMic(row.modelData)
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: 3 * root.d
-                        radius: IrisStyle.radiusRow
-                        color: row.pressed ? IrisStyle.fillActive : row.containsMouse ? IrisStyle.fillQuiet : "transparent"
-                        Behavior on color { ColorAnimation { duration: IrisStyle.duration(110); easing.type: IrisStyle.feedbackEasing } }
-                    }
-                    Rectangle {
-                        visible: row.index < (root.mic.builtins ?? []).length - 1
-                        anchors.bottom: parent.bottom
-                        anchors.left: label.left
-                        anchors.right: parent.right
-                        height: 1
-                        color: IrisStyle.hairline
-                    }
-                    IrisSquircle {
-                        id: mark
-                        anchors.left: parent.left
-                        anchors.leftMargin: 14 * root.d
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.round(26 * root.d)
-                        height: width
-                        tint: IrisStyle.identityColor(row.look.tint)
-                        glyph: row.look.glyph
-                    }
-                    IrisText {
-                        id: label
-                        anchors.left: mark.right
-                        anchors.leftMargin: 12 * root.d
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Translation.tr(row.modelData)
-                        font.pixelSize: IrisStyle.typeLabel
-                        font.weight: IrisStyle.weight(row.current ? Font.DemiBold : Font.Medium)
-                    }
-                    IrisText {
-                        anchors.right: check.left
-                        anchors.rightMargin: 10 * root.d
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: row.modelData === "Off" || !AudioEngine.tunedInput ? Translation.tr(row.look.line)
-                            : Translation.tr("%1, fit to your voice").arg(Translation.tr(row.look.line))
-                        color: IrisStyle.muted
-                        font.pixelSize: IrisStyle.typeLabel
-                    }
-                    MaterialSymbol {
-                        id: check
-                        anchors.right: parent.right
-                        anchors.rightMargin: 14 * root.d
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.round(18 * root.d)
-                        text: "check"
-                        iconSize: Math.round(18 * root.d)
-                        color: IrisStyle.accent
-                        opacity: row.current ? 1 : 0
-                    }
+                    readonly property var look: IrisAudioModules.micLooks[sound.modelData] ?? ({ glyph: "mic", tint: "gray", line: "" })
+                    name: sound.modelData
+                    glyph: sound.look.glyph
+                    tintName: sound.look.tint
+                    line: sound.modelData === "Off" || !AudioEngine.tunedInput ? Translation.tr(sound.look.line)
+                        : Translation.tr("%1, fit to your voice").arg(Translation.tr(sound.look.line))
+                    last: sound.index === (root.mic.builtins ?? []).length - 1
+                    current: (root.mic.active ?? "") === sound.modelData
+                    onActivated: AudioEngine.applyMic(sound.modelData)
                 }
             }
         }
@@ -156,8 +91,13 @@ ColumnLayout {
         visible: AudioEngine.autoMic
     }
 
-    Caption { text: Translation.tr("Yours") }
-    IrisAudioMicPresets { Layout.fillWidth: true }
+    IrisAudioCaption { text: Translation.tr("Yours") }
+    IrisAudioOwnPresets {
+        Layout.fillWidth: true
+        pipe: "input"
+        emptyText: Translation.tr("Nothing saved yet. Turn on the effects you want, pick a sound, adjust it, and save your voice here.")
+        placeholder: Translation.tr("Save your voice as a preset")
+    }
 
     IrisText {
         Layout.fillWidth: true
@@ -185,7 +125,7 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 6 * root.d
 
-            Caption { text: Translation.tr(block.modelData.title) }
+            IrisAudioCaption { text: Translation.tr(block.modelData.title) }
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: blockColumn.implicitHeight

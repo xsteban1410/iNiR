@@ -19,4 +19,7 @@ IrisAudioLoudness 1.0 IrisAudioLoudness.qml
 IrisAudioResponse 1.0 IrisAudioResponse.qml
 IrisAudioTunedFor 1.0 IrisAudioTunedFor.qml
 IrisAudioAutoTune 1.0 IrisAudioAutoTune.qml
-IrisAudioMicPresets 1.0 IrisAudioMicPresets.qml
+IrisAudioCaption 1.0 IrisAudioCaption.qml
+IrisAudioChip 1.0 IrisAudioChip.qml
+IrisAudioPresetRow 1.0 IrisAudioPresetRow.qml
+IrisAudioOwnPresets 1.0 IrisAudioOwnPresets.qml

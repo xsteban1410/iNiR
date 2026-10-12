@@ -109,12 +109,13 @@ ColumnLayout {
         spacing: Math.round(6 * root.d)
         Repeater {
             model: root.quick
-            Chip {
+            IrisAudioChip {
+                id: soundChip
                 required property var modelData
-                name: modelData
-                own: AudioEngine.presets.includes(modelData)
-                selected: AudioEngine.active === modelData
-                onClicked: AudioEngine.applyPreset(modelData)
+                name: soundChip.modelData
+                translated: !AudioEngine.presets.includes(soundChip.modelData)
+                selected: AudioEngine.active === soundChip.modelData
+                onClicked: AudioEngine.applyPreset(soundChip.modelData)
             }
         }
     }
@@ -145,12 +146,13 @@ ColumnLayout {
             spacing: Math.round(6 * root.d)
             Repeater {
                 model: root.micSounds
-                Chip {
+                IrisAudioChip {
+                    id: micChip
                     required property var modelData
-                    name: modelData
-                    selected: (AudioEngine.mic?.active ?? "") === modelData
-                    own: !root.micBuiltins.includes(modelData)
-                    onClicked: own ? AudioEngine.loadMicPreset(modelData) : AudioEngine.applyMic(modelData)
+                    name: micChip.modelData
+                    selected: (AudioEngine.mic?.active ?? "") === micChip.modelData
+                    translated: root.micBuiltins.includes(micChip.modelData)
+                    onClicked: micChip.translated ? AudioEngine.applyMic(micChip.modelData) : AudioEngine.loadMicPreset(micChip.modelData)
                 }
             }
         }
@@ -181,51 +183,21 @@ ColumnLayout {
         Flow {
             Layout.fillWidth: true
             spacing: Math.round(6 * root.d)
-            Chip {
+            IrisAudioChip {
                 name: "Default"
+                translated: true
                 selected: tuned.chosen === null
                 onClicked: AudioEngine.tuneFor("", tuned.pipe)
             }
             Repeater {
                 model: AudioEngine.tunedList(tuned.pipe)
-                Chip {
+                IrisAudioChip {
                     required property var modelData
                     name: String(modelData.name)
-                    own: true
                     selected: tuned.chosen?.id === modelData.id
                     onClicked: AudioEngine.tuneFor(String(modelData.id), tuned.pipe)
                 }
             }
-        }
-    }
-
-    component Chip: MouseArea {
-        id: chip
-        property string name: ""
-        property bool selected: false
-        // A name the person gave is shown as it is, never looked up as a translation.
-        property bool own: false
-        width: chipLabel.implicitWidth + Math.round(24 * root.d)
-        height: Math.round(30 * root.d)
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        enabled: !AudioEngine.busy
-        Accessible.role: Accessible.RadioButton
-        Accessible.name: chip.own ? chip.name : Translation.tr(chip.name)
-        Accessible.checked: chip.selected
-        Rectangle {
-            anchors.fill: parent
-            radius: height / 2
-            color: chip.selected ? IrisStyle.tintFillHover(IrisStyle.accent)
-                : chip.containsMouse ? IrisStyle.fillHover : IrisStyle.fillQuiet
-            Behavior on color { ColorAnimation { duration: IrisStyle.duration(120); easing.type: IrisStyle.feedbackEasing } }
-        }
-        IrisText {
-            id: chipLabel
-            anchors.centerIn: parent
-            text: chip.own ? chip.name : Translation.tr(chip.name)
-            font.pixelSize: IrisStyle.typeLabel
-            font.weight: IrisStyle.weight(chip.selected ? Font.DemiBold : Font.Medium)
         }
     }
 }

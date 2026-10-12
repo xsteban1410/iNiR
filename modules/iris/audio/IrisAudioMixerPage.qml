@@ -80,15 +80,6 @@ ColumnLayout {
 
     spacing: 6 * root.d
 
-    component Caption: IrisText {
-        Layout.leftMargin: 16 * root.d
-        Layout.topMargin: 10 * root.d
-        color: IrisStyle.label
-        font.family: IrisStyle.fontTitle
-        font.pixelSize: IrisStyle.typeMeta
-        font.weight: IrisStyle.weight(Font.DemiBold)
-    }
-
     component Empty: IrisText {
         Layout.fillWidth: true
         Layout.leftMargin: 16 * root.d
@@ -415,7 +406,7 @@ ColumnLayout {
             Flow {
                 Layout.fillWidth: true
                 spacing: Math.round(6 * root.d)
-                Chip {
+                IrisAudioChip {
                     visible: root.effectsLive
                     name: Translation.tr("Effects")
                     glyph: "graphic_eq"
@@ -424,7 +415,7 @@ ColumnLayout {
                 }
                 Repeater {
                     model: options.devices
-                    Chip {
+                    IrisAudioChip {
                         required property var modelData
                         name: Audio.friendlyDeviceName(modelData)
                         glyph: options.input ? "mic" : "speaker"
@@ -457,60 +448,20 @@ ColumnLayout {
             Flow {
                 Layout.fillWidth: true
                 spacing: Math.round(6 * root.d)
-                Chip {
+                IrisAudioChip {
                     name: Translation.tr("None")
                     selected: options.brings.length === 0
                     onClicked: if (options.brings.length > 0) AudioEngine.forgetApp(options.app)
                 }
                 Repeater {
                     model: AudioEngine.catalog
-                    Chip {
+                    IrisAudioChip {
                         required property var modelData
                         name: Translation.tr(modelData)
                         selected: options.brings === modelData
                         onClicked: AudioEngine.rememberApp(options.app, modelData)
                     }
                 }
-            }
-        }
-    }
-
-    component Chip: MouseArea {
-        id: chip
-        property string name: ""
-        property string glyph: ""
-        property bool selected: false
-        width: chipRow.implicitWidth + Math.round(24 * root.d)
-        height: Math.round(30 * root.d)
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        enabled: !AudioEngine.busy
-        Accessible.role: Accessible.RadioButton
-        Accessible.name: chip.name
-        Accessible.checked: chip.selected
-        Rectangle {
-            anchors.fill: parent
-            radius: height / 2
-            color: chip.selected ? IrisStyle.tintFillHover(IrisStyle.accent)
-                : chip.containsMouse ? IrisStyle.fillHover : IrisStyle.fillQuiet
-            Behavior on color { ColorAnimation { duration: IrisStyle.duration(120); easing.type: IrisStyle.feedbackEasing } }
-        }
-        Row {
-            id: chipRow
-            anchors.centerIn: parent
-            spacing: 5 * root.d
-            MaterialSymbol {
-                visible: chip.glyph.length > 0
-                anchors.verticalCenter: parent.verticalCenter
-                text: chip.glyph
-                iconSize: Math.round(15 * root.d)
-                color: chip.selected ? IrisStyle.text : IrisStyle.subtext
-            }
-            IrisText {
-                anchors.verticalCenter: parent.verticalCenter
-                text: chip.name
-                font.pixelSize: IrisStyle.typeLabel
-                font.weight: IrisStyle.weight(chip.selected ? Font.DemiBold : Font.Medium)
             }
         }
     }
@@ -540,7 +491,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
 
-    Caption { text: Translation.tr("Now") }
+    IrisAudioCaption { text: Translation.tr("Now") }
     Group {
         MasterLevel {}
         Rectangle {
@@ -553,7 +504,7 @@ ColumnLayout {
         MasterLevel { input: true; last: true }
     }
 
-    Caption { text: Translation.tr("Playback") }
+    IrisAudioCaption { text: Translation.tr("Playback") }
     Group {
         Empty { visible: root.playing.length === 0; text: Translation.tr("No app is playing sound.") }
         Repeater {
@@ -563,7 +514,7 @@ ColumnLayout {
         }
     }
 
-    Caption { text: Translation.tr("Recording") }
+    IrisAudioCaption { text: Translation.tr("Recording") }
     Group {
         Empty { visible: root.recording.length === 0; text: Translation.tr("No app is recording.") }
         Repeater {
@@ -572,7 +523,7 @@ ColumnLayout {
         }
     }
 
-    Caption { text: Translation.tr("Output devices") }
+    IrisAudioCaption { text: Translation.tr("Output devices") }
     Group {
         Empty { visible: root.outputs.length === 0; text: Translation.tr("No output device found.") }
         Repeater {
@@ -581,7 +532,7 @@ ColumnLayout {
         }
     }
 
-    Caption { text: Translation.tr("Input devices") }
+    IrisAudioCaption { text: Translation.tr("Input devices") }
     Group {
         Empty { visible: root.inputs.length === 0; text: Translation.tr("No microphone found.") }
         Repeater {

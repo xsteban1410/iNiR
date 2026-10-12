@@ -45,15 +45,6 @@ ColumnLayout {
 
     spacing: 6 * root.d
 
-    component Caption: IrisText {
-        Layout.leftMargin: 16 * root.d
-        Layout.topMargin: 10 * root.d
-        color: IrisStyle.label
-        font.family: IrisStyle.fontTitle
-        font.pixelSize: IrisStyle.typeMeta
-        font.weight: IrisStyle.weight(Font.DemiBold)
-    }
-
     Rectangle {
         Layout.fillWidth: true
         implicitHeight: headColumn.implicitHeight
@@ -119,7 +110,7 @@ ColumnLayout {
             enabled: root.on
             opacity: root.on ? 1 : 0.4
             Behavior on opacity { NumberAnimation { duration: IrisStyle.duration(140); easing.type: IrisStyle.feedbackEasing } }
-            Caption {
+            IrisAudioCaption {
                 visible: text.length > 0
                 text: Translation.tr(chunk.modelData.caption)
             }
