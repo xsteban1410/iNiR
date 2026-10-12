@@ -648,6 +648,10 @@ Open the iRiS Audio Engine: EasyEffects' output chain with six core effects (Equ
 | `page <name>` | Open it on one page: `presets`, `mixer` (every device and app at its own volume), `equalizer`, `filter`, `bass_enhancer`, `exciter`, `autogain`, `limiter`, `microphone` or `add` |
 | `preset <name>` | Play a sound by name, built in (`Default`, `Voice`, `Rock`…) or one of yours |
 | `bypass` | Hear everything without effects, or bring them back (EasyEffects' global bypass) |
+| `autoTune` | Auto Audio Engine (off by default: **Settings › Sound & Feedback › Audio Engine › Auto Audio Engine**): play a short sweep through the output playing now, listen with the microphone, and keep it as a tuned output (five at most; headphones are named, not measured) |
+| `tuning <name>` | Shape the built-in sounds to a tuned output by the name you gave it, or `Default` |
+| `micPreset <name>` | Play a microphone sound by name, built in (`Calls`, `Podcast`, `Gaming`, `Singing`…) or one of yours; a built-in shapes only the microphone effects that are on |
+| `micTuning <name>` | Shape the microphone's built-in sounds to a tuned microphone (measured by the Auto Microphone Engine on the Microphone page, once **Auto Microphone Engine** is on in Settings) by its name, or `Default` |
 
 ```kdl
 Mod+U { spawn "inir" "audioEngine" "toggle"; }

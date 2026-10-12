@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell.Io
 import qs.services
 import qs.services.deferred
 
@@ -9,9 +10,13 @@ import qs.services.deferred
 // An app that brings a sound plays it while it plays, and the sound it replaced comes back once it stops, unless the
 // sound was changed by hand in between. The newest app wins; a short pause (a browser drops its stream on pause)
 // does not count as stopping.
+// A tuned output follows the output too: a port changing on the same sink (headphones in or out) counts as a change.
+// A tuned microphone follows the microphones' ports the same way (a headset in or out).
 Item {
     id: root
     readonly property string sink: String(Audio.sink?.name ?? "")
+    readonly property bool tunes: AudioEngine.autoOutput && AudioEngine.savedFollow && AudioEngine.savedOutputs.length > 0
+    readonly property bool tunesMic: AudioEngine.autoMic && AudioEngine.savedMicFollow && AudioEngine.savedInputs.length > 0
     property string lastSink: ""
     property bool primed: false
 
@@ -28,6 +33,11 @@ Item {
         if (root.sink.length === 0 || root.sink === root.lastSink)
             return
         root.lastSink = root.sink
+        // The tuned output first: a remembered built-in sound is then shaped to it.
+        if (root.tunes) {
+            AudioEngine.hold()
+            AudioEngine.follow(root.sink, "output")
+        }
         const preset = String(AudioEngine.savedDevices[root.sink] ?? "")
         if (preset.length === 0)
             return
@@ -86,11 +96,77 @@ Item {
         }
     }
 
+    // A port is a card's: plugging headphones in changes the card, not the sink. A card also changes with its volume,
+    // so the sink's active port is read and only a new one counts.
+    property string lastPort: ""
+    property bool portKnown: false
+    property string lastMicPorts: ""
+    property bool micPortsKnown: false
+    Process {
+        running: root.tunes || root.tunesMic
+        command: ["pactl", "subscribe"]
+        stdout: SplitParser {
+            onRead: line => {
+                if (line.indexOf("'change' on card") >= 0) portSettled.restart()
+            }
+        }
+    }
+    Timer {
+        id: portSettled
+        interval: 600
+        onTriggered: {
+            if (root.tunes && !portRead.running) portRead.running = true
+            if (root.tunesMic && !micPortRead.running) micPortRead.running = true
+        }
+    }
+    // The microphones' ports, every hardware one: which of them EasyEffects records from is the helper's to say.
+    Process {
+        id: micPortRead
+        command: ["pactl", "-f", "json", "list", "sources"]
+        stdout: StdioCollector { id: micPortText }
+        onExited: {
+            let ports = ""
+            try {
+                ports = JSON.parse(micPortText.text).filter(s => !String(s.name).startsWith("easyeffects")
+                    && !String(s.name).endsWith(".monitor")).map(s => `${s.name}:${s.active_port ?? ""}`).join(",")
+            } catch (e) {
+                return
+            }
+            const changed = root.micPortsKnown && ports !== root.lastMicPorts
+            root.lastMicPorts = ports
+            root.micPortsKnown = true
+            if (!changed || !root.primed) return
+            AudioEngine.hold()
+            AudioEngine.follow("", "input")
+        }
+    }
+    Process {
+        id: portRead
+        command: ["pactl", "-f", "json", "list", "sinks"]
+        stdout: StdioCollector { id: portText }
+        onExited: {
+            let port = ""
+            try {
+                port = String(JSON.parse(portText.text).find(s => s.name === root.sink)?.active_port ?? "")
+            } catch (e) {
+                return
+            }
+            const changed = root.portKnown && port !== root.lastPort
+            root.lastPort = port
+            root.portKnown = true
+            if (!changed || !root.primed || root.sink.length === 0) return
+            AudioEngine.hold()
+            AudioEngine.follow(root.sink, "output")
+        }
+    }
+
     Timer {
         interval: 5000
         running: true
         onTriggered: {
             root.lastSink = root.sink
+            if (root.tunes) portRead.running = true
+            if (root.tunesMic) micPortRead.running = true
             root.order = root.playing
             root.primed = true
         }

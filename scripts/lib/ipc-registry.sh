@@ -2,7 +2,7 @@
 # Auto-generated from QML IpcHandler declarations + docs/IPC.md metadata.
 # Do not edit manually.
 # Regenerate: python3 scripts/lib/generate-ipc-registry.py
-# IPC.md hash: ff4ee8e0ecd41945
+# IPC.md hash: a37f7b6b0cdc03c7
 # Targets: 75
 
 declare -gA IPC_TARGET_DESC=(
@@ -166,7 +166,7 @@ declare -gA IPC_TARGET_FUNCTIONS=(
   [altSwitcher]="opens open close toggle next previous"
   [appCatalog]="refresh search install list"
   [audio]="volumeUp volumeDown mute playEvent micMute"
-  [audioEngine]="toggle open close preset bypass page"
+  [audioEngine]="toggle open close preset bypass page tuning autoTune micPreset micTuning"
   [autostart]="status addCommand addApp removeLast reload"
   [background]="widgetDesign widgetMaterial widgetSearch toggleEditMode toggleWidgetManager setEditMode editState applyOrganicEdgePreset applyOrganicEdgeComposition applyOrganicEdgeMaterial applyOrganicEdgeResponse organicEdgeState setOrganicEdgeEnabled quickControlsPage quickControlsGeometry widgetSnapshot legibilityState desktopItemsState focusWidget promoteWidget resetLayerOrder setWidgetEnabled clockDebugState clockDebugSetMode clockDebugSetRegion clockDebugSetLayout clockDebugRestore"
   [bar]="mediaWidth toggle close open"
@@ -268,6 +268,10 @@ declare -gA IPC_FUNCTION_DESC=(
   ["audioEngine:preset"]="Play a sound by name, built in (\`Default\`, \`Voice\`, \`Rock\`…) or one of yours"
   ["audioEngine:bypass"]="Hear everything without effects, or bring them back (EasyEffects' global bypass)"
   ["audioEngine:page"]="Open it on one page: \`presets\`, \`mixer\` (every device and app at its own volume), \`equalizer\`, \`filter\`, \`bass_enhancer\`, \`exciter\`, \`autogain\`, \`limiter\`, \`microphone\` or \`add\`"
+  ["audioEngine:tuning"]="Shape the built-in sounds to a tuned output by the name you gave it, or \`Default\`"
+  ["audioEngine:autoTune"]="Auto Audio Engine (off by default: **Settings › Sound & Feedback › Audio Engine › Auto Audio Engine**): play a short sweep through the output playing now, listen with the microphone, and keep it as a tuned output (five at most; headphones are named, not measured)"
+  ["audioEngine:micPreset"]="Play a microphone sound by name, built in (\`Calls\`, \`Podcast\`, \`Gaming\`, \`Singing\`…) or one of yours; a built-in shapes only the microphone effects that are on"
+  ["audioEngine:micTuning"]="Shape the microphone's built-in sounds to a tuned microphone (measured by the Auto Microphone Engine on the Microphone page, once **Auto Microphone Engine** is on in Settings) by its name, or \`Default\`"
   ["autostart:status"]="Return \`niri\\"
   ["autostart:addCommand"]="Append a managed \`spawn-sh-at-startup\` shell line"
   ["autostart:addApp"]="Append a managed \`gtk-launch <desktopId>\` entry"
@@ -693,6 +697,9 @@ declare -gA IPC_FUNCTION_ARGS=(
   ["audio:playEvent"]="<event>"
   ["audioEngine:preset"]="<name>"
   ["audioEngine:page"]="<name>"
+  ["audioEngine:tuning"]="<name>"
+  ["audioEngine:micPreset"]="<name>"
+  ["audioEngine:micTuning"]="<name>"
   ["autostart:addCommand"]="<cmd>"
   ["autostart:addApp"]="<desktopId>"
   ["background:widgetDesign"]="<name>"
@@ -854,6 +861,9 @@ declare -gA IPC_FUNCTION_VALUES=(
   ["audio:playEvent"]="batteryLow timerDone"
   ["audioEngine:preset"]="Default Voice Rock"
   ["audioEngine:page"]="presets mixer equalizer filter bass_enhancer exciter autogain limiter microphone add"
+  ["audioEngine:tuning"]="Default"
+  ["audioEngine:micPreset"]="Calls Podcast Gaming Singing"
+  ["audioEngine:micTuning"]="Default"
   ["autostart:addCommand"]="spawn-sh-at-startup"
   ["background:widgetDesign"]="iris material individual instrument readout undo status"
   ["background:widgetMaterial"]="status match"

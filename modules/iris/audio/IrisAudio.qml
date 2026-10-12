@@ -366,8 +366,10 @@ Item {
                 }
                 IrisText {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: AudioEngine.modified ? Translation.tr("Now: %1 · changed").arg(Translation.tr(AudioEngine.active))
-                        : Translation.tr("Now: %1").arg(Translation.tr(AudioEngine.active))
+                    readonly property string sound: AudioEngine.tunedOutput && AudioEngine.builtins.includes(AudioEngine.active)
+                        ? Translation.tr("%1 for %2").arg(Translation.tr(AudioEngine.active)).arg(AudioEngine.tunedOutput.name)
+                        : Translation.tr(AudioEngine.active)
+                    text: AudioEngine.modified ? Translation.tr("Now: %1 · changed").arg(sound) : Translation.tr("Now: %1").arg(sound)
                     color: IrisStyle.subtext
                     font.pixelSize: IrisStyle.typeMeta
                     font.weight: IrisStyle.weight(Font.Medium)

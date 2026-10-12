@@ -48,15 +48,22 @@ Singleton {
         { kind: "filter", title: "Low cut", glyph: "filter_alt", tint: "teal" },
         { kind: "rnnoise", title: "Noise reduction", glyph: "noise_control_off", tint: "green" },
         { kind: "gate", title: "Noise gate", glyph: "door_front", tint: "blue" },
+        { kind: "equalizer", title: "Voice EQ", glyph: "graphic_eq", tint: "sky" },
         { kind: "autotune", title: "Autotune", glyph: "mic_external_on", tint: "pink" },
         { kind: "compressor", title: "Leveler", glyph: "compress", tint: "purple" },
         { kind: "limiter", title: "Limiter", glyph: "vertical_align_center", tint: "red" }
     ]
     readonly property var micLooks: ({ Off: { glyph: "mic_off", tint: "gray", line: "Your microphone as it is" },
         Calls: { glyph: "call", tint: "green", line: "Clear and even, background hushed" },
+        Podcast: { glyph: "mic_external_on", tint: "indigo", line: "Warm and close, like a studio" },
         Streaming: { glyph: "podcasts", tint: "purple", line: "Fuller and louder, firmly levelled" },
-        "Noisy room": { glyph: "noise_aware", tint: "orange", line: "Strong cleanup for loud places" } })
+        Gaming: { glyph: "sports_esports", tint: "teal", line: "Cuts through game chat, keys hushed" },
+        "Noisy room": { glyph: "noise_aware", tint: "orange", line: "Strong cleanup for loud places" },
+        Singing: { glyph: "music_note", tint: "pink", line: "Open and airy, gently in tune" },
+        Robot: { glyph: "smart_toy", tint: "red", line: "Hard-tuned, metallic, unmistakable" } })
     readonly property var micParams: ({
+        // The voice's equalizer is drawn as its bands, not as rows.
+        equalizer: [],
         filter: [
             { prop: "frequency", label: "Cut below", description: "Rumble, desk knocks and breath pops live down here.", kind: "range", min: 20, max: 300, scale: "log", unit: "Hz" }
         ],
@@ -65,7 +72,7 @@ Singleton {
             { prop: "vadThres", label: "Voice threshold", kind: "range", min: 0, max: 100, step: 1, unit: "%", when: "enableVad" }
         ],
         gate: [
-            { prop: "curveThreshold", label: "Opens above", description: "Quieter than this is treated as background.", kind: "range", min: -60, max: 0, step: 1, unit: "dB" },
+            { prop: "curveThreshold", label: "Opens above", description: "Quieter than this is treated as background.", kind: "range", min: -80, max: 0, step: 1, unit: "dB" },
             { prop: "reduction", label: "Background down by", kind: "range", min: -72, max: 0, step: 1, unit: "dB" },
             { prop: "release", label: "Release", kind: "range", min: 10, max: 1000, step: 10, unit: "ms" }
         ],

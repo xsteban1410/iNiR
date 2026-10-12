@@ -2710,6 +2710,8 @@
             "enable": true,
             "host": "overlay",
             "playerShortcut": true,
+            "autoOutput": false,
+            "autoMic": false,
             "startup": { "enable": false, "preset": "Default", "mic": "" }
         },
         "tray": {

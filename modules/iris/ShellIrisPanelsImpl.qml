@@ -171,10 +171,12 @@ Item {
             AudioEngine.boot(String(Config.options?.iris?.audio?.startup?.preset ?? "Default"),
                 String(Config.options?.iris?.audio?.startup?.mic ?? ""))
     }
-    // Outputs and apps that remember a sound need a watcher only while some do.
+    // Outputs and apps that remember a sound, and tuned outputs that follow the output, need a watcher only while some do.
     LazyLoader {
         active: GlobalStates.audioEngineAvailable
-            && (Object.keys(AudioEngine.savedDevices).length > 0 || Object.keys(AudioEngine.savedApps).length > 0)
+            && (Object.keys(AudioEngine.savedDevices).length > 0 || Object.keys(AudioEngine.savedApps).length > 0
+                || (AudioEngine.autoOutput && AudioEngine.savedFollow && AudioEngine.savedOutputs.length > 0)
+                || (AudioEngine.autoMic && AudioEngine.savedMicFollow && AudioEngine.savedInputs.length > 0))
         component: IrisAudioAutoload {}
     }
     IpcHandler {
@@ -201,6 +203,45 @@ Item {
                 return "unknown page"
             AudioEngine.lastSection = name
             GlobalStates.openAudioEngine()
+            return "ok"
+        }
+        // The output the built-in sounds are shaped to, by the name it was given, or Default.
+        function tuning(name: string): string {
+            if (!GlobalStates.audioEngineAvailable) return "audio engine off"
+            if (!AudioEngine.autoOutput) return "auto audio engine off: turn it on in Settings"
+            const found = Array.from(AudioEngine.savedOutputs).find(o => String(o.name).toLowerCase() === name.toLowerCase())
+            if (!found && name.toLowerCase() !== "default") return "unknown output"
+            AudioEngine.hold()
+            AudioEngine.tuneFor(found ? String(found.id) : "", "output")
+            return "ok"
+        }
+        // The Auto Audio Engine on the output playing now: a short sweep, then the sounds fit it.
+        function autoTune(): string {
+            const sink = String(Audio.sink?.name ?? "")
+            if (!GlobalStates.audioEngineAvailable) return "audio engine off"
+            if (!AudioEngine.autoOutput) return "auto audio engine off: turn it on in Settings"
+            if (sink.length === 0 || sink.startsWith("easyeffects_")) return "no output"
+            if (AudioEngine.savedOutputs.length >= AudioEngine.outputsMax) return "no room: remove a tuned output first"
+            AudioEngine.hold()
+            AudioEngine.probeOutput(sink, "")
+            return "ok"
+        }
+        // The microphone's sound, built in or your own: `inir audioEngine micPreset Podcast`.
+        function micPreset(name: string): string {
+            if (!GlobalStates.audioEngineAvailable) return "audio engine off"
+            AudioEngine.hold()
+            if (AudioEngine.micNames.includes(name)) AudioEngine.applyMic(name)
+            else AudioEngine.loadMicPreset(name)
+            return "ok"
+        }
+        // The microphone the microphone's sounds are shaped to, by its name, or Default.
+        function micTuning(name: string): string {
+            if (!GlobalStates.audioEngineAvailable) return "audio engine off"
+            if (!AudioEngine.autoMic) return "auto microphone engine off: turn it on in Settings"
+            const found = Array.from(AudioEngine.savedInputs).find(o => String(o.name).toLowerCase() === name.toLowerCase())
+            if (!found && name.toLowerCase() !== "default") return "unknown microphone"
+            AudioEngine.hold()
+            AudioEngine.tuneFor(found ? String(found.id) : "", "input")
             return "ok"
         }
     }

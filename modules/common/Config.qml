@@ -4250,6 +4250,8 @@ Singleton {
                     property bool enable: true
                     property string host: "overlay" // "overlay" over the desktop, or "window"
                     property bool playerShortcut: true
+                    property bool autoOutput: false // the Auto Audio Engine: measured outputs that shape the built-in sounds
+                    property bool autoMic: false // the Auto Microphone Engine: tuned microphones that shape the microphone's sounds
                     property JsonObject startup: JsonObject {
                         property bool enable: false
                         property string preset: "Default"

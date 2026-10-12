@@ -16,3 +16,7 @@ IrisAudioMixerPage 1.0 IrisAudioMixerPage.qml
 IrisAudioAutoload 1.0 IrisAudioAutoload.qml
 IrisAudioQuick 1.0 IrisAudioQuick.qml
 IrisAudioLoudness 1.0 IrisAudioLoudness.qml
+IrisAudioResponse 1.0 IrisAudioResponse.qml
+IrisAudioTunedFor 1.0 IrisAudioTunedFor.qml
+IrisAudioAutoTune 1.0 IrisAudioAutoTune.qml
+IrisAudioMicPresets 1.0 IrisAudioMicPresets.qml

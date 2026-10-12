@@ -25,7 +25,8 @@ ColumnLayout {
     readonly property var blocks: [
         { caption: "Start clean", names: ["Default", "Flat"] },
         { caption: "Shape", names: ["Voice", "Bass", "Treble"] },
-        { caption: "Genres", names: ["Pop", "Rock", "Jazz", "Classic"] }
+        { caption: "Media", names: ["Games", "Competitive", "Movies", "Night"] },
+        { caption: "Genres", names: ["Pop", "Rock", "Jazz", "Classic", "Electronic", "Hip-hop"] }
     ]
     readonly property var looks: ({
         Default: { glyph: "do_not_disturb_on", tint: "gray", line: "Every effect off" },
@@ -36,7 +37,13 @@ ColumnLayout {
         Pop: { glyph: "star", tint: "pink", line: "Warm mids with punch" },
         Rock: { glyph: "electric_bolt", tint: "red", line: "Scooped mids, bite" },
         Jazz: { glyph: "piano", tint: "indigo", line: "Warm and open" },
-        Classic: { glyph: "music_note", tint: "teal", line: "Natural, full range" }
+        Classic: { glyph: "music_note", tint: "teal", line: "Natural, full range" },
+        Games: { glyph: "sports_esports", tint: "green", line: "Impact and space, blasts held" },
+        Competitive: { glyph: "footprint", tint: "yellow", line: "Footsteps forward, rumble down" },
+        Movies: { glyph: "movie", tint: "blue", line: "Clear dialogue, weighty lows" },
+        Night: { glyph: "bedtime", tint: "indigo", line: "Quiet and loud held close" },
+        Electronic: { glyph: "equalizer", tint: "lavender", line: "Deep sub, crisp top" },
+        "Hip-hop": { glyph: "headphones", tint: "orange", line: "Heavy low end, clear vocals" }
     })
     readonly property string errorText: ({
         builtin_name: Translation.tr("That name belongs to a built-in sound."),
@@ -46,11 +53,28 @@ ColumnLayout {
         preset_not_found: Translation.tr("That preset is gone."),
         unreadable_file: Translation.tr("That file could not be read."),
         unknown_format: Translation.tr("That file is not an iNiR or EasyEffects output preset."),
-        needs_easyeffects: Translation.tr("EasyEffects must be running to read its own presets.")
+        needs_easyeffects: Translation.tr("EasyEffects must be running to read its own presets."),
+        tuned_name_taken: Translation.tr("A tuned output already has that name."),
+        tuned_not_found: Translation.tr("That tuned output is gone."),
+        tuned_full: Translation.tr("Remove a tuned output first: five are kept at most."),
+        no_output: Translation.tr("No output to test: choose one in Volume first."),
+        needs_numpy: Translation.tr("The test needs NumPy in iNiR's Python environment."),
+        probe_failed: Translation.tr("The test could not play or record. Check that the output and the microphone are free.")
     })[AudioEngine.error] ?? (AudioEngine.error.startsWith("internal_")
         ? Translation.tr("Something went wrong there. The Audio Engine keeps running; try again.") : "")
 
     spacing: 6 * root.d
+
+    // A built-in sound's word on what it does; on a tuned output, Default keeps only what the output needs.
+    function lineOf(name: string): string {
+        if (name === "Default" && AudioEngine.tunedOutput) return "Only what this output needs"
+        return root.looks[name]?.line ?? ""
+    }
+    // A tuned output just measured opens with its name ready to change.
+    Connections {
+        target: AudioEngine
+        function onProbed(id: string, pipe: string): void { if (pipe === "output") tunedFor.rename(id) }
+    }
 
     component Caption: IrisText {
         Layout.leftMargin: 16 * root.d
@@ -217,6 +241,12 @@ ColumnLayout {
         }
     }
 
+    IrisAudioTunedFor {
+        id: tunedFor
+        Layout.fillWidth: true
+        visible: AudioEngine.autoOutput && AudioEngine.outputs.length > 0
+    }
+
     Repeater {
         model: root.blocks
         ColumnLayout {
@@ -242,13 +272,19 @@ ColumnLayout {
                             name: modelData
                             glyph: root.looks[modelData]?.glyph ?? "tune"
                             tintName: root.looks[modelData]?.tint ?? "gray"
-                            line: root.looks[modelData]?.line ?? ""
+                            line: root.lineOf(modelData)
                             last: index === block.names.length - 1
                         }
                     }
                 }
             }
         }
+    }
+
+    IrisAudioAutoTune {
+        Layout.fillWidth: true
+        Layout.topMargin: 10 * root.d
+        visible: AudioEngine.autoOutput
     }
 
     RowLayout {

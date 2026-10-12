@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.services
 import qs.modules.common
 
 /**
@@ -38,7 +39,34 @@ Singleton {
     // Sounds apps bring while they play (node.name → preset), and the apps each chain leaves alone.
     property var apps: ({})
     property var excluded: ({ output: [], input: [] })
-    property var mic: ({ adopted: false, core: [], active: "", builtins: [] })
+    property var mic: ({ adopted: false, core: [], active: "", builtins: [], presets: [], presetInfo: ({}) })
+    // Tuned outputs: what each measured output can play; while one is chosen, the built-in sounds are shaped to it.
+    property var outputs: []
+    property string tuning: ""
+    property bool tuningFollow: true
+    property int outputsMax: 5
+    // Tuned microphones, the same way: the microphone's built-in sounds are shaped to the one chosen.
+    property var inputs: []
+    property string micTuning: ""
+    property bool micTuningFollow: true
+    readonly property var tunedInput: root.inputs.find(o => o.id === root.micTuning) ?? null
+    // The test in flight: which chain it measures, its stage (identify, sweep or quiet and speak, analyse) and how
+    // long that stage lasts.
+    property string probePipe: "output"
+    property bool probing: false
+    property string probeStage: ""
+    property real probeSeconds: 0
+    signal probed(string id, string pipe)
+    // The test also runs as an Island task, so it can be followed with the Audio Engine closed.
+    readonly property string _task: "audio-engine-tune"
+    property string _announce: ""
+    function probeDetail(stage: string): string {
+        return stage === "quiet" ? Translation.tr("Stay quiet for a moment: listening to the room…")
+            : stage === "speak" ? Translation.tr("Now talk, and keep talking until the bar fills")
+            : stage === "sweep" ? Translation.tr("Listening to a sweep… keep the room quiet")
+            : stage === "analyse" ? Translation.tr("Working out what it can play…")
+            : Translation.tr("Looking at the output…")
+    }
     property list<string> builtins: []
     property list<string> presets: []
     property var presetInfo: ({})
@@ -56,6 +84,24 @@ Singleton {
     readonly property string savedActive: String(root._saved?.active ?? "")
     readonly property var savedDevices: root._saved?.devices ?? ({})
     readonly property var savedApps: root._saved?.apps ?? ({})
+    readonly property var savedOutputs: root._saved?.outputs ?? []
+    readonly property bool savedFollow: root._saved?.tuningFollow ?? true
+    readonly property var savedInputs: root._saved?.inputs ?? []
+    readonly property var savedMicPresets: root._saved?.micPresets ?? []
+    // The Auto Audio Engine and the Auto Microphone Engine are opt-in (Settings › Sound & Feedback › Audio Engine).
+    // Turned off, the sounds play as built: the tuned devices are kept, none is chosen.
+    readonly property bool autoOutput: Config.options?.iris?.audio?.autoOutput ?? false
+    readonly property bool autoMic: Config.options?.iris?.audio?.autoMic ?? false
+    function autoOn(pipe: string): bool { return pipe === "input" ? root.autoMic : root.autoOutput }
+    function _settleAuto(): void {
+        if (!root.enabled) return
+        if (!root.autoOutput && String(root._saved?.tuning ?? "").length > 0) { root.hold(); root.tuneFor("", "output") }
+        if (!root.autoMic && String(root._saved?.micTuning ?? "").length > 0) { root.hold(); root.tuneFor("", "input") }
+    }
+    onAutoOutputChanged: root._settleAuto()
+    onAutoMicChanged: root._settleAuto()
+    readonly property bool savedMicFollow: root._saved?.micTuningFollow ?? true
+    readonly property var tunedOutput: root.outputs.find(o => o.id === root.tuning) ?? null
     // Which apps a chain leaves alone, read from the state like the rest: the Volume page answers without the helper.
     function isExcluded(app: string, pipe: string): bool {
         const own = root.ready ? root.excluded?.[pipe] : root._saved?.pipes?.[pipe]?.blocklist
@@ -285,6 +331,54 @@ Singleton {
     }
     function importPreset(path: string): void { root._send({ op: "import", path: path }, true) }
 
+    // Plays a short sweep through the output and listens with the microphone (headphones are only named): the
+    // measured output becomes a tuned one, chosen at once. `replace` measures a tuned output again.
+    function probeOutput(sink: string, replace: string): void { root._probe("output", sink, replace) }
+    // The microphone EasyEffects records from, while the person speaks.
+    function probeMic(replace: string): void { root._probe("input", "", replace) }
+    function _probe(pipe: string, device: string, replace: string): void {
+        root.probing = true
+        root.probePipe = pipe
+        root.probeStage = "identify"
+        LiveActivities.start(root._task, pipe === "input" ? Translation.tr("Auto Microphone Engine") : Translation.tr("Auto Audio Engine"))
+        LiveActivities.setGlyph(root._task, "graphic_eq")
+        LiveActivities.setTint(root._task, "pink")
+        LiveActivities.setDetail(root._task, root.probeDetail("identify"))
+        root._send({ op: "probe", pipe: pipe, device: device, replace: replace }, true)
+    }
+    function tuneFor(id: string, pipe: string): void {
+        if (pipe === "input") root.micTuning = id
+        else root.tuning = id
+        root._send({ op: "tuneFor", pipe: pipe, id: id }, true)
+    }
+    function renameTuned(id: string, name: string, pipe: string): void {
+        root._send({ op: "renameTuned", pipe: pipe, id: id, name: name }, true)
+    }
+    function forgetTuned(id: string, pipe: string): void { root._send({ op: "forgetTuned", pipe: pipe, id: id }, true) }
+    function setTuningFollow(on: bool, pipe: string): void {
+        if (pipe === "input") root.micTuningFollow = on
+        else root.tuningFollow = on
+        root._send({ op: "tuningFollow", pipe: pipe, on: on }, true)
+    }
+    // The device changed, or a port on it (headphones or a headset in or out): its tuned one takes over.
+    function follow(device: string, pipe: string): void { root._send({ op: "follow", pipe: pipe, device: device }, true) }
+    function tunedList(pipe: string): var { return pipe === "input" ? root.inputs : root.outputs }
+    function tunedOf(pipe: string): var { return pipe === "input" ? root.tunedInput : root.tunedOutput }
+    function tunedFollow(pipe: string): bool { return pipe === "input" ? root.micTuningFollow : root.tuningFollow }
+
+    // The microphone's own presets and its equalizer's bands.
+    function saveMicPreset(name: string): void { root._send({ op: "save", pipe: "input", name: name }, true) }
+    function loadMicPreset(name: string): void { root._send({ op: "load", pipe: "input", name: name }, true) }
+    function renameMicPreset(from: string, to: string): void { root._send({ op: "rename", pipe: "input", from: from, to: to }, true) }
+    function deleteMicPreset(name: string): void { root._send({ op: "delete", pipe: "input", name: name }, true) }
+    function setMicBand(index: int, gain: real): void {
+        root._patchMic("equalizer", m => {
+            m.bands = (m.bands ?? []).map((b, i) => i === index ? { frequency: b.frequency, gain: gain } : b)
+            return m
+        })
+        root._send({ op: "band", pipe: "input", index: index, gain: gain }, false)
+    }
+
     function _consume(line: string): void {
         let event = null
         try {
@@ -302,6 +396,18 @@ Singleton {
             root.error = String(event.message ?? "")
             if (event.op === "start" || event.op === "boot")
                 root.starting = false
+            if (event.op === "probe") {
+                root.probing = false
+                LiveActivities.end(root._task, Translation.tr("The output could not be tested"))
+            }
+        } else if (event.type === "probe") {
+            root.probeStage = String(event.stage ?? "")
+            if (event.seconds !== undefined) root.probeSeconds = Number(event.seconds)
+            LiveActivities.setDetail(root._task, root.probeDetail(root.probeStage))
+        } else if (event.type === "probed") {
+            root.probing = false
+            root._announce = String(event.id ?? "")
+            root.probed(root._announce, String(event.pipe ?? "output"))
         } else if (event.type === "bypass") {
             root.bypass = event.on === true
         } else if (event.type === "exported") {
@@ -328,6 +434,18 @@ Singleton {
             root.apps = event.apps ?? root.apps
             root.excluded = event.excluded ?? root.excluded
             root.headroom = event.headroom ?? root.headroom
+            root.outputs = event.outputs ?? root.outputs
+            root.tuning = event.tuning ?? root.tuning
+            root.tuningFollow = event.tuningFollow ?? root.tuningFollow
+            root.outputsMax = event.outputsMax ?? root.outputsMax
+            root.inputs = event.inputs ?? root.inputs
+            root.micTuning = event.micTuning ?? root.micTuning
+            root.micTuningFollow = event.micTuningFollow ?? root.micTuningFollow
+            if (root._announce.length > 0) {
+                const done = root.tunedList(root.probePipe).find(o => o.id === root._announce)
+                LiveActivities.end(root._task, done ? Translation.tr("Sounds now fit %1").arg(done.name) : "")
+                root._announce = ""
+            }
             if (root.running) {
                 root.starting = false
                 root.adopted = event.adopted === true
@@ -349,6 +467,7 @@ Singleton {
         if (!root.live) {
             root.pending = 0
             root._excludeWaiting = []
+            root.probing = false
             root.ready = false
             root._queue = []
         }
@@ -363,7 +482,11 @@ Singleton {
             onRead: line => root._consume(line)
         }
         // A helper that dies leaves nothing to answer what was asked of it.
-        onExited: root.pending = 0
+        onExited: {
+            root.pending = 0
+            if (root.probing) LiveActivities.end(root._task, Translation.tr("The output could not be tested"))
+            root.probing = false
+        }
         onStarted: {
             const queued = root._queue
             root._queue = []
@@ -383,6 +506,7 @@ Singleton {
             } catch (e) {
                 root._saved = ({})
             }
+            if (Config.ready) root._settleAuto()
         }
         onLoadFailed: root._saved = ({})
     }
