@@ -20,7 +20,7 @@ Singleton {
     property int users: 0
     property int holds: 0
     // A command in flight keeps the helper too: a chain rebuilt or EasyEffects started outlasts a hold.
-    readonly property bool live: root.enabled && (root.users > 0 || root.holds > 0 || root.busy)
+    readonly property bool live: root.enabled && (root.users > 0 || root.holds > 0 || root.busy || root._background > 0)
 
     property bool ready: false
     property bool installed: false
@@ -70,10 +70,19 @@ Singleton {
     property list<string> builtins: []
     property list<string> presets: []
     property var presetInfo: ({})
+    // Commands waiting on their answer; polls and refreshes wait apart, so they never read as Applying.
     property int pending: 0
     readonly property bool busy: root.pending > 0
+    property int _background: 0
+    // What each answer still due belongs to, in the order the helper answers: "cmd" or "bg".
+    property var _waiting: []
+    function _answered(): void {
+        const kind = root._waiting.length > 0 ? root._waiting[0] : "cmd"
+        root._waiting = root._waiting.slice(1)
+        if (kind === "bg") root._background = Math.max(0, root._background - 1)
+        else root.pending = Math.max(0, root.pending - 1)
+    }
     property string error: ""
-    property string notice: ""
     property bool starting: false
     // The page the Audio Engine shows, kept across closing it and switching between overlay and window.
     property string lastSection: "presets"
@@ -92,7 +101,6 @@ Singleton {
     // Turned off, the sounds play as built: the tuned devices are kept, none is chosen.
     readonly property bool autoOutput: Config.options?.iris?.audio?.autoOutput ?? false
     readonly property bool autoMic: Config.options?.iris?.audio?.autoMic ?? false
-    function autoOn(pipe: string): bool { return pipe === "input" ? root.autoMic : root.autoOutput }
     function _settleAuto(): void {
         if (!root.enabled) return
         if (!root.autoOutput && String(root._saved?.tuning ?? "").length > 0) { root.hold(); root.tuneFor("", "output") }
@@ -155,11 +163,19 @@ Singleton {
     function _send(request: var, loud: bool): void {
         if (!root.enabled)
             return
+        const asked = !["poll", "refresh", "status"].includes(request.op)
+        // A command may patch what is shown before the helper answers: the next state is applied even if unchanged.
+        if (asked)
+            root._lastState = ""
         if (loud) {
-            root.pending++
-            // A new command starts clean: the last one's error no longer describes anything. A poll is not a command.
-            if (!["poll", "refresh", "status"].includes(request.op))
+            root._waiting = root._waiting.concat([asked ? "cmd" : "bg"])
+            if (asked) {
+                root.pending++
+                // A new command starts clean: the last one's error no longer describes anything.
                 root.error = ""
+            } else {
+                root._background++
+            }
         }
         if (!proc.running) {
             root._queue = [...root._queue, request]
@@ -186,8 +202,6 @@ Singleton {
     function _target(ref: string): var {
         return ref.indexOf("#") >= 0 ? { id: ref } : { kind: ref }
     }
-
-    function refresh(): void { root._send({ op: "status" }, true) }
 
     function start(): void {
         root.starting = true
@@ -410,17 +424,13 @@ Singleton {
             root.probed(root._announce, String(event.pipe ?? "output"))
         } else if (event.type === "bypass") {
             root.bypass = event.on === true
-        } else if (event.type === "exported") {
-            root.notice = "exported"
-        } else if (event.type === "imported") {
-            root.notice = "imported"
         } else if (event.type === "poll") {
             // Nothing changed since the last state: the poll is answered and nothing is read again.
-            root.pending = Math.max(0, root.pending - 1)
+            root._answered()
         } else if (event.type === "state") {
             // A quiet command's state only corrects the knobs; nothing was counted for it.
             if (event.quiet !== true)
-                root.pending = Math.max(0, root.pending - 1)
+                root._answered()
             // A report that failed tells nothing about EasyEffects.
             if (event.unknown === true)
                 return
@@ -430,46 +440,58 @@ Singleton {
                 root._excludeWaiting = []
                 for (const entry of done) root.excludeApplied(entry.app, entry.on, entry.pipe)
             }
-            root.devices = event.devices ?? root.devices
-            root.apps = event.apps ?? root.apps
-            root.excluded = event.excluded ?? root.excluded
-            root.headroom = event.headroom ?? root.headroom
-            root.outputs = event.outputs ?? root.outputs
-            root.tuning = event.tuning ?? root.tuning
-            root.tuningFollow = event.tuningFollow ?? root.tuningFollow
-            root.outputsMax = event.outputsMax ?? root.outputsMax
-            root.inputs = event.inputs ?? root.inputs
-            root.micTuning = event.micTuning ?? root.micTuning
-            root.micTuningFollow = event.micTuningFollow ?? root.micTuningFollow
+            // A poll's full read every half minute mostly finds nothing new: its lists would rebuild every page.
+            if (line !== root._lastState) {
+                root._lastState = line
+                root._applyState(event)
+            }
             if (root._announce.length > 0) {
                 const done = root.tunedList(root.probePipe).find(o => o.id === root._announce)
                 LiveActivities.end(root._task, done ? Translation.tr("Sounds now fit %1").arg(done.name) : "")
                 root._announce = ""
             }
-            if (root.running) {
-                root.starting = false
-                root.adopted = event.adopted === true
-                root.core = event.core ?? []
-                root.extras = event.extras ?? []
-                root.active = event.active ?? ""
-                root.modified = event.modified === true
-                root.bypass = event.bypass === true
-                root.mic = event.mic ?? root.mic
-                root.builtins = event.builtins ?? []
-                root.presets = event.presets ?? []
-                root.presetInfo = event.presetInfo ?? ({})
-            }
             root.ready = true
+        }
+    }
+
+    property string _lastState: ""
+    function _applyState(event: var): void {
+        root.devices = event.devices ?? root.devices
+        root.apps = event.apps ?? root.apps
+        root.excluded = event.excluded ?? root.excluded
+        root.headroom = event.headroom ?? root.headroom
+        root.outputs = event.outputs ?? root.outputs
+        root.tuning = event.tuning ?? root.tuning
+        root.tuningFollow = event.tuningFollow ?? root.tuningFollow
+        root.outputsMax = event.outputsMax ?? root.outputsMax
+        root.inputs = event.inputs ?? root.inputs
+        root.micTuning = event.micTuning ?? root.micTuning
+        root.micTuningFollow = event.micTuningFollow ?? root.micTuningFollow
+        if (root.running) {
+            root.starting = false
+            root.adopted = event.adopted === true
+            root.core = event.core ?? []
+            root.extras = event.extras ?? []
+            root.active = event.active ?? ""
+            root.modified = event.modified === true
+            root.bypass = event.bypass === true
+            root.mic = event.mic ?? root.mic
+            root.builtins = event.builtins ?? []
+            root.presets = event.presets ?? []
+            root.presetInfo = event.presetInfo ?? ({})
         }
     }
 
     onLiveChanged: {
         if (!root.live) {
             root.pending = 0
+            root._background = 0
+            root._waiting = []
             root._excludeWaiting = []
             root.probing = false
             root.ready = false
             root._queue = []
+            root._lastState = ""
         }
     }
 
@@ -484,13 +506,18 @@ Singleton {
         // A helper that dies leaves nothing to answer what was asked of it.
         onExited: {
             root.pending = 0
+            root._background = 0
+            root._waiting = []
+            root._lastState = ""
             if (root.probing) LiveActivities.end(root._task, Translation.tr("The output could not be tested"))
             root.probing = false
         }
         onStarted: {
             const queued = root._queue
             root._queue = []
-            if (!queued.some(request => request.op === "status")) root.pending++
+            // The first answer is this status's, ahead of everything queued.
+            root._waiting = ["bg"].concat(root._waiting)
+            root._background++
             proc.write(JSON.stringify({ op: "status" }) + "\n")
             for (const request of queued) proc.write(JSON.stringify(request) + "\n")
         }
@@ -545,7 +572,7 @@ Singleton {
     Timer {
         interval: root.running ? 5000 : 4000
         repeat: true
-        running: root.users > 0 && root.enabled && !root.busy
+        running: root.users > 0 && root.enabled && !root.busy && root._background === 0
         onTriggered: {
             root._polls = (root._polls + 1) % 6
             root._send({ op: !root.running ? "status" : root._polls === 0 ? "refresh" : "poll" }, true)
